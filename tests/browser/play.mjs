@@ -10,7 +10,8 @@ import { chromium } from 'playwright-core';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = Number(process.env.PLAY_PORT || 4322);
-const URL = `http://127.0.0.1:${PORT}/`;
+const LIVE_URL = process.env.PLAY_URL || null;
+const URL = LIVE_URL || `http://127.0.0.1:${PORT}/`;
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ROM = process.env.DUNE_ROM || null;
 const OUT = path.join(ROOT, 'test-results', 'play');
@@ -28,7 +29,7 @@ for (const required of ['web/reference.json', 'web/py-package.zip', 'web/runtime
   }
 }
 
-const server = spawn('/usr/bin/python3', [path.join(ROOT, 'tools/serve.py'), '--port', String(PORT)], {
+const server = LIVE_URL ? null : spawn('/usr/bin/python3', [path.join(ROOT, 'tools/serve.py'), '--port', String(PORT)], {
   cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'],
 });
 const problems = [];
@@ -62,7 +63,7 @@ async function frameStats(page) {
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 try {
-  await waitForServer();
+  if (!LIVE_URL) await waitForServer();
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   const errors = [];
@@ -128,5 +129,5 @@ try {
   process.exitCode = 1;
 } finally {
   await browser.close();
-  server.kill('SIGKILL');
+  if (server) server.kill('SIGKILL');
 }

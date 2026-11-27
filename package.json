@@ -9,7 +9,9 @@
     "test:saves": "node --test tests/saves/*.test.mjs",
     "serve": "/usr/bin/python3 tools/serve.py --port 4188",
     "bundle": "/usr/bin/python3 tools/bundle_web.py",
-    "smoke": "node tests/browser/smoke.mjs"
+    "smoke": "node tests/browser/smoke.mjs",
+    "play": "node tests/browser/play.mjs",
+    "test:browser": "node tests/browser/ux.mjs"
   },
   "dependencies": {
     "pyodide": "0.28.3"
