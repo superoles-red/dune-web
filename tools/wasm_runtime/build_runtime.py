@@ -1175,7 +1175,7 @@ def build(args: argparse.Namespace) -> dict:
             "deterministic_link": determinism["deterministic"],
         },
         "commands": runner.commands,
-        "logs": str((build_dir / "logs").relative_to(ROOT)) if (build_dir / "logs").is_dir() else None,
+        "logs": _logs_path(build_dir),
         "limitations": [
             "Phase 1: the SDL/EM_JS/WASI imports are mocked in Node; run_main()/SDL host are not exercised.",
             "Phase 1: dune_rt_init() initialises em_cpu directly (audio_mode=AUDIO_STUB); the production host calls run_main(window=1) instead.",
@@ -1189,6 +1189,16 @@ def build(args: argparse.Namespace) -> dict:
     return manifest
 
 
+
+
+def _logs_path(build_dir: Path):
+    logs = build_dir / "logs"
+    if not logs.is_dir():
+        return None
+    try:
+        return str(logs.relative_to(ROOT))
+    except ValueError:
+        return "<build>/logs"
 
 def portable_log(value, emsdk, build_dir):
     """Replace machine-specific prefixes so the manifest stays reproducible."""
