@@ -26,6 +26,10 @@ jobs:
         run: python3 -m unittest discover -s tests/wasm_emitter
       - name: WASM integration tests (external ROM/baseline are skipped)
         run: python3 -m unittest discover -s tests/wasm_integration
+      - name: Z80 emitter unit tests (differential skips without the ROM)
+        run: python3 -m unittest discover -s tests/wasm_z80
+      - name: Ported input layer tests
+        run: node --test 'tests/input/*.test.mjs'
       - name: Workspace contract (profile, runtime manifest, references)
         run: python3 tools/check_workspace.py
 

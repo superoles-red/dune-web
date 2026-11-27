@@ -53,6 +53,9 @@
     <button id="step" disabled>+1 с эмуляции</button>
     <button id="press-start" disabled>Start</button>
     <button id="tap" disabled>Тап в центр</button>
+    <button id="pan" disabled>Пан +40</button>
+    <button id="zoom" disabled>Зум ×0.8</button>
+    <button id="expanded" disabled>Обзор</button>
     <button id="save" disabled>Сейв</button>
     <button id="loadstate" disabled>Загрузить сейв</button>
   </div>
@@ -83,6 +86,9 @@ const els = {
   step: document.querySelector('#step'),
   pressStart: document.querySelector('#press-start'),
   tap: document.querySelector('#tap'),
+  pan: document.querySelector('#pan'),
+  zoom: document.querySelector('#zoom'),
+  expanded: document.querySelector('#expanded'),
   save: document.querySelector('#save'),
   loadState: document.querySelector('#loadstate'),
   screen: document.querySelector('#screen'),
@@ -106,6 +112,8 @@ function metricsLine(host) {
     `frame ${m.frameWidth}×${m.frameHeight} · last run ${m.lastRunSteps.toLocaleString()} steps / ${m.lastRunMs.toFixed(1)} ms (${(m.stepsPerSecond / 1e6).toFixed(1)} M steps/s)` +
       (m.fps ? ` · ${m.fps.toFixed(0)} fps · ${m.frameMs.toFixed(2)} ms/frame` : ''),
     m.status.startsWith('booted') ? `boot ${m.bootMs.toFixed(1)} ms · link ${m.linkMs.toFixed(1)} ms · load ${m.loadMs.toFixed(0)} ms` : '',
+    `touch ${host.touch?.attached ? 'attached' : 'off'}` +
+      (host.touch?.attached ? ` ${host.touch.width}×${host.touch.height}${host.touch.webStep ? ' · webStep' : ''}` : ''),
   ].join('\n') + fault;
 }
 
@@ -157,7 +165,7 @@ async function loadRom() {
     host.boot();
     host.drawFrame();
     state.loaded = true;
-    enable(['start', 'step', 'press-start', 'tap', 'save', 'loadstate'], true);
+    enable(['start', 'step', 'press-start', 'tap', 'pan', 'zoom', 'expanded', 'save', 'loadstate'], true);
     refresh(host);
   } catch (error) {
     state.lastError = error;
@@ -195,9 +203,30 @@ els.pressStart.addEventListener('click', () => {
 });
 
 els.tap.addEventListener('click', () => {
-  // CSS pixels -> native frame pixels, centre tap
-  const result = host.tap(160, 112);
-  setStatus(`${metricsLine(host)}\ntap(160,112) → ${result}${result === 0 ? ' (SDL-window path; use Start/d-pad in path A)' : ''}`);
+  // Window coordinates of the virtual surface (320x224), not CSS pixels.
+  const result = host.tapScreen(160, 112);
+  const kind = result === 1 ? 'world/tap' : result === 2 ? 'native UI' : result === 3 ? 'minimap' : 'outside/no map';
+  host.drawFrame();
+  setStatus(`${metricsLine(host)}\ntapScreen(160,112) → ${result} (${kind})`);
+});
+
+els.pan.addEventListener('click', () => {
+  const result = host.pan(40, 0); // one-shot begin/pan/end
+  host.drawExpandedFrame();
+  const camera = host.cameraDebug();
+  setStatus(`${metricsLine(host)}\npan(40,0) → ${result} · camera ${camera ? camera.cameraX + ',' + camera.cameraY : '—'}`);
+});
+
+els.zoom.addEventListener('click', () => {
+  const zoom = host.zoomCamera(0.8, 160, 112);
+  host.drawExpandedFrame();
+  const camera = host.cameraDebug();
+  setStatus(`${metricsLine(host)}\nzoomCamera(0.8) → ${zoom}% · overview ${camera ? camera.worldWidth + '×' + camera.worldHeight : '—'}`);
+});
+
+els.expanded.addEventListener('click', () => {
+  const size = host.drawExpandedFrame();
+  setStatus(`${metricsLine(host)}\nexpanded overview → ${size ? size.width + '×' + size.height : 'unavailable (mission map only)'}`);
 });
 
 els.save.addEventListener('click', () => {

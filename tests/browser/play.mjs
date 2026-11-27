@@ -90,27 +90,122 @@ try {
   console.log('boot frame:', JSON.stringify(stats));
   if (!(stats.canvasNonBlack > 500)) note('boot frame looks blank');
 
-  const press = async (key, hold = 120) => {
-    await page.keyboard.down(key);
-    await page.waitForTimeout(hold);
-    await page.keyboard.up(key);
-    await page.waitForTimeout(700);
+  const pressA = async (label) => {
+    await page.keyboard.down('KeyZ');
+    await page.waitForTimeout(120);
+    await page.keyboard.up('KeyZ');
+    await page.waitForTimeout(450);
+    if (label) await page.screenshot({ path: path.join(OUT, label) });
   };
   stats = await frameStats(page);
   console.log('menu frame:', JSON.stringify(stats));
 
-  // START GAME is the first item: confirm with A.
-  await press('KeyZ');
-  await page.screenshot({ path: path.join(OUT, '02-startgame.png') });
+  // The shell fast-forwards to the house select. Confirm the house, the
+  // prologue question and the mission briefings by pressing A; the map appears
+  // after roughly twenty confirmations. Advance the emulator between presses so
+  // the test does not wait for real time.
+  await page.screenshot({ path: path.join(OUT, '02-house.png') });
+  let reachedMission = false;
+  for (let i = 1; i <= 32; i += 1) {
+    await pressA(i === 4 ? '03-prologue.png' : i === 12 ? '04-briefing.png' : null);
+    await page.evaluate(() => window.__DUNE_HOST.advanceInstructions(1_600_000));
+    await page.waitForTimeout(120);
+    const state = await page.evaluate(() => {
+      const host = window.__DUNE_HOST;
+      const memory = host.memory;
+      const bytes = new Uint8Array(memory.buffer, host.exports.dune_web_campaign_json());
+      let end = 0;
+      while (end < bytes.length && bytes[end] !== 0) end += 1;
+      const json = JSON.parse(new TextDecoder().decode(bytes.subarray(0, end)));
+      return { scene: json.scene, armed: json.activeRunArmed };
+    });
+    if (state.armed === 1) {
+      reachedMission = true;
+      break;
+    }
+  }
+  if (!reachedMission) note('did not reach an armed mission through the menu');
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: path.join(OUT, '05-map.png') });
   stats = await frameStats(page);
-  console.log('start game frame:', JSON.stringify(stats));
-  // Then confirm the first house with A.
-  await press('KeyZ');
-  await page.screenshot({ path: path.join(OUT, '03-house.png') });
-  await press('KeyZ');
-  await page.screenshot({ path: path.join(OUT, '04-mission.png') });
-  stats = await frameStats(page);
-  console.log('mission frame:', JSON.stringify(stats));
+  console.log('map frame:', JSON.stringify(stats));
+  if (!(stats.canvasNonBlack > 5000)) note('mission map frame looks blank');
+
+  // Touch/mouse camera: drag pans, wheel zooms, click selects; the expanded
+  // mission overview must visibly change.
+  const box = await page.locator('#game-canvas').boundingBox();
+  const cameraBefore = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let step = 1; step <= 8; step += 1) {
+    await page.mouse.move(box.x + box.width / 2 - step * 8, box.y + box.height / 2, { steps: 1 });
+    await page.waitForTimeout(30);
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const cameraAfterPan = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  await page.screenshot({ path: path.join(OUT, '06-pan.png') });
+  console.log('camera pan:', JSON.stringify({ before: cameraBefore?.cameraX, after: cameraAfterPan?.cameraX }));
+  if (cameraAfterPan?.cameraX === cameraBefore?.cameraX) note('camera did not pan after a drag');
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 240);
+  await page.waitForTimeout(400);
+  const cameraAfterZoom = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  await page.screenshot({ path: path.join(OUT, '07-zoom.png') });
+  console.log('camera zoom:', JSON.stringify({ before: cameraAfterPan?.zoom, after: cameraAfterZoom?.zoom }));
+  if (cameraAfterZoom?.zoom === cameraAfterPan?.zoom) note('camera did not zoom after the wheel');
+
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(OUT, '08-tap.png') });
+
+  // In-game menu: save the mission, advance, load it back.
+  const clickDom = (id) => page.evaluate((elementId) => document.getElementById(elementId).click(), id);
+  const openGameSheet = async () => {
+    await clickDom('game-menu');
+    await page.waitForFunction(
+      () => !document.getElementById('game-sheet').classList.contains('hidden'),
+      null, { timeout: 5000 },
+    );
+    await page.waitForTimeout(250);
+  };
+  await openGameSheet();
+  await clickDom('game-save');
+  await page.waitForTimeout(400);
+  const saveStatus = await page.textContent('#game-sheet-status');
+  console.log('save status:', saveStatus);
+  await clickDom('game-sheet-close');
+  // Change the camera after saving, then load the saved state back.
+  const before = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  await page.evaluate(() => {
+    const host = window.__DUNE_HOST;
+    host.beginPan(160, 112);
+    host.panCamera(20, 0);
+    host.endPan();
+  });
+  await page.waitForTimeout(400);
+  const changed = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  await openGameSheet();
+  await page.evaluate(() => document.getElementById('game-load').click());
+  await page.waitForTimeout(600);
+  const loadStatus = await page.textContent('#game-sheet-status');
+  await page.screenshot({ path: path.join(OUT, '09-after-load.png') });
+  const afterLoad = await page.evaluate(() => {
+    const host = window.__DUNE_HOST;
+    host.advanceInstructions(400_000);
+    return {
+      instructions: host.metrics.instructions,
+      fault: host.metrics.fault,
+      frames: host.metrics.renderedFrames,
+      status: document.getElementById('game-sheet-status').textContent,
+    };
+  });
+  console.log('save/load:', JSON.stringify({ changed: changed?.cameraX, before: before?.cameraX, afterLoad, loadStatus }));
+  if (changed?.cameraX === before?.cameraX) note('camera did not change after the save');
+  if (!/Сохранение загружено/.test(loadStatus)) note(`load status: ${loadStatus}`);
+  if (afterLoad.fault) note('game faulted after loading the save');
+  if (!(afterLoad.instructions > 0)) note('game did not advance after loading the save');
 
   const report = {
     build: { ok: result.ok, sha: result.output_sha256, bytes: result.output_bytes, seconds: result.total_seconds },

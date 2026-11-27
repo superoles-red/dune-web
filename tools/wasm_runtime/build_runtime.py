@@ -140,6 +140,28 @@ ABI_EXPORTS = [
     "dune_z80_bit",
     "dune_z80_block",
     "dune_z80_rotate",
+    # Path A virtual window / browser input (tools/wasm_runtime/src/dune_rt_virtual_window.inc)
+    "dune_web_attach_virtual_window",
+    "dune_web_virtual_window_attached",
+    "dune_web_virtual_window_width",
+    "dune_web_virtual_window_height",
+    "dune_web_expanded_frame_rgba",
+    "dune_web_expanded_frame_width",
+    "dune_web_expanded_frame_height",
+    "dune_rt_web_step",
+    # Path-A native audio control (tools/wasm_runtime/src/dune_rt_audio.inc).
+    # These export the already-compiled YM2612/PSG synthesis + PCM ring to the
+    # standalone host; no new imports, no ABI/DSAV change.
+    "dune_rt_audio_mode",
+    "dune_rt_set_audio_mode",
+    "dune_rt_audio_pop",
+    "dune_rt_audio_available",
+    "dune_rt_audio_rate",
+    "dune_rt_audio_ring_frames",
+    "dune_rt_audio_peak",
+    "dune_rt_audio_frames",
+    "dune_rt_audio_reset_peak",
+    "dune_rt_audio_reset",
 ]
 
 STUB_EXPORTS = [
@@ -152,6 +174,19 @@ STUB_EXPORTS = [
     "stub_translated_step",
     "stub_translated_z80_step",
     "stub_warmup_all",
+]
+
+
+# SDL2 is linked into runtime.wasm, so the adapters' geometry calls cannot be
+# mocked from JS.  Link-time wrapping redirects them to the MIT shim in
+# tools/wasm_runtime/src/dune_rt_virtual_window.inc, which answers the virtual
+# window size when a host calls dune_web_attach_virtual_window().
+LINK_WRAP_FLAGS = [
+    "-Wl,--wrap=SDL_GetWindowSize",
+    "-Wl,--wrap=SDL_GetWindowSizeInPixels",
+    "-Wl,--wrap=SDL_GetWindowPosition",
+    "-Wl,--wrap=SDL_GetRendererOutputSize",
+    "-Wl,--wrap=SDL_SetWindowSize",
 ]
 
 
@@ -392,7 +427,9 @@ def write_runtime_c(build_dir: Path) -> Path:
         "/* 1. exact pinned preamble (3 emitter lines + runtime/dune-runtime-v2.c) */\n"
         '#include "preamble.c"\n'
         "/* 2. ABI / host-glue layer (no game data, no translated instructions) */\n"
-        '#include "dune_rt_abi.inc"\n',
+        '#include "dune_rt_abi.inc"\n'
+        "/* 3. path-A native audio control (exports only; no ABI change) */\n"
+        '#include "dune_rt_audio.inc"\n',
         encoding="utf-8",
     )
     return runtime_c
@@ -594,6 +631,7 @@ def compile_runtime(runner: CommandRunner, build_dir: Path, runtime_manifest: di
             "-sALLOW_MEMORY_GROWTH=1",
             "-sALLOW_TABLE_GROWTH=1",
             f"-sSTACK_SIZE={STACK_BYTES}",
+            *LINK_WRAP_FLAGS,
             str(obj_dir / "runtime.o"),
             str(obj_dir / "audio.o"),
             "-o",
@@ -901,6 +939,7 @@ def determinism_check(runner: CommandRunner, build_dir: Path, out_wasm: Path) ->
             "-sALLOW_MEMORY_GROWTH=1",
             "-sALLOW_TABLE_GROWTH=1",
             f"-sSTACK_SIZE={STACK_BYTES}",
+            *LINK_WRAP_FLAGS,
             str(obj_dir / "runtime.o"),
             str(obj_dir / "audio.o"),
             "-o",
@@ -1084,6 +1123,7 @@ def build(args: argparse.Namespace) -> dict:
                 "-sIMPORTED_MEMORY=1", f"-sINITIAL_MEMORY={INITIAL_MEMORY_BYTES}",
                 f"-sMAXIMUM_MEMORY={MAXIMUM_MEMORY_BYTES}", "-sALLOW_MEMORY_GROWTH=1",
                 "-sALLOW_TABLE_GROWTH=1", f"-sSTACK_SIZE={STACK_BYTES}",
+                *LINK_WRAP_FLAGS,
             ],
             "stub_game": {
                 "compile": ["--target=wasm32", "-O2", "-nostdlib", "-ffreestanding", "-fno-builtin"],
@@ -1118,6 +1158,7 @@ def build(args: argparse.Namespace) -> dict:
             "abi_fill_sha256": abi_sources["fill_sha256"],
             "loader_template_sha256": sha256_file(SRC_DIR / "loader.mjs.tmpl"),
             "stub_game_source_sha256": sha256_file(SRC_DIR / "stub_game.c"),
+            "virtual_window_inc_sha256": sha256_file(SRC_DIR / "dune_rt_virtual_window.inc"),
             "abi_spec_sha256": sha256_file(Path(__file__).resolve().parent / "abi_spec.py"),
         },
         "data_check": {

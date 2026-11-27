@@ -27,6 +27,7 @@ const state = {
   result: null,
   reference: null,
   host: null,
+  input: null,
   log: [],
 };
 
@@ -250,7 +251,22 @@ async function startPlay() {
       log(`fast-forward skipped: ${error.message}`);
     }
     host.start();
+    host.setPresentation?.('auto');
+    // Audio requires a user gesture: this call runs from the Играть click chain.
+    host.audio?.enable?.().then((state) => {
+      if (state) log(`Звук включён (${host.audio.stats?.().sampleRate || 48000} Гц)`);
+      updateSoundButton();
+    }).catch((error) => log(`Звук недоступен: ${error.message}`));
+    host.refreshPresentation?.();
     window.__DUNE_HOST = host;
+    const { createInputLayer } = await import('./input/index.mjs');
+    state.input = createInputLayer({
+      host,
+      canvas: $('game-canvas'),
+      isInputCaptured: () => !state.host || !$('game-sheet').classList.contains('hidden'),
+      onStatus: (snapshot) => { window.__DUNE_INPUT = snapshot; },
+      onOrder: (order) => log(`input: ${order.type}`),
+    });
     gameLoading(false);
     log(`Игра запущена: ${host.metrics?.instructions ?? 0} инструкций, кадры ${host.metrics?.renderedFrames ?? 0}`);
     // Keep the screen awake during play where the API exists.
@@ -267,6 +283,8 @@ async function startPlay() {
 }
 
 function stopPlay() {
+  state.input?.destroy?.();
+  state.input = null;
   if (state.host) {
     try { state.host.destroy(); } catch { /* ignore */ }
     state.host = null;
@@ -306,6 +324,142 @@ window.addEventListener('keyup', (event) => {
   event.preventDefault();
   state.host.pad(mask, false);
 });
+
+// ---------- in-game menu and saves ----------
+function readCString(memory, pointer) {
+  if (!memory || !pointer) return '';
+  const bytes = new Uint8Array(memory.buffer, pointer);
+  let end = 0;
+  while (end < bytes.length && bytes[end] !== 0) end += 1;
+  return new TextDecoder().decode(bytes.subarray(0, end));
+}
+
+function campaignJson() {
+  const host = state.host;
+  try {
+    if (!host?.exports?.dune_web_campaign_json) return null;
+    return JSON.parse(readCString(host.memory, host.exports.dune_web_campaign_json()));
+  } catch {
+    return null;
+  }
+}
+
+function currentRun() {
+  const json = campaignJson();
+  if (!json || json.activeRunArmed !== 1) return null;
+  const house = json.activeRunHouse;
+  const mission = json.activeRunMission;
+  if (!Number.isInteger(house) || !Number.isInteger(mission)) return null;
+  if (house < 0 || house > 2 || mission < 1 || mission > 9) return null;
+  return { house, mission };
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
+function setGameStatus(text) {
+  $('game-sheet-status').textContent = text;
+}
+
+function openGameMenu() {
+  $('game-sheet').classList.remove('hidden');
+  const run = currentRun();
+  setGameStatus(run ? 'Можно сохранить текущую миссию.' : 'Сохранение станет доступно в миссии.');
+  $('game-save').disabled = !run;
+  if (campaignStore?.current) saveGame(false);
+}
+
+function closeGameMenu() {
+  $('game-sheet').classList.add('hidden');
+}
+
+function saveGame(manual = true) {
+  const host = state.host;
+  const run = currentRun();
+  if (!host || !run || !campaignStore) {
+    if (manual) setGameStatus('Сохранение станет доступно в миссии.');
+    return false;
+  }
+  try {
+    const bytes = host.saveState();
+    if (!bytes || !bytes.length) throw new Error('empty save');
+    if (!campaignStore.saveSlot(run.house, run.mission, bytesToBase64(bytes))) throw new Error('storage');
+    if (!manual) return true;
+    const names = ['HARKONNEN', 'ATREIDES', 'ORDOS'];
+    setGameStatus(`Сохранено: ${names[run.house]}, миссия ${run.mission}.`);
+    return true;
+  } catch (error) {
+    if (manual) setGameStatus('Не удалось сохранить на этом устройстве.');
+    log(`save failed: ${error.message}`);
+    return false;
+  }
+}
+
+function loadGame() {
+  const host = state.host;
+  if (!host || !campaignStore) return false;
+  const slot = campaignStore.resumable();
+  if (!slot) {
+    setGameStatus('Сохранений пока нет.');
+    return false;
+  }
+  try {
+    if (!host.loadState(base64ToBytes(slot.state))) throw new Error('load rejected');
+    host.drawFrame?.();
+    setGameStatus('Сохранение загружено.');
+    return true;
+  } catch (error) {
+    setGameStatus('Сохранение не подошло к этой сборке.');
+    log(`load failed: ${error.message}`);
+    return false;
+  }
+}
+
+function updateSoundButton() {
+  const audio = state.host?.audio;
+  const button = $('game-sound');
+  if (!button) return;
+  button.textContent = audio?.enabled ? 'Звук: вкл' : 'Звук: выкл';
+  button.disabled = !audio?.supported;
+}
+
+async function toggleSound() {
+  const audio = state.host?.audio;
+  if (!audio) return;
+  try {
+    if (audio.enabled) await audio.disable();
+    else await audio.enable();
+  } catch (error) {
+    log(`Звук: ${error.message}`);
+  }
+  updateSoundButton();
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+  else document.exitFullscreen?.().catch(() => {});
+}
+
+$('game-menu').addEventListener('click', openGameMenu);
+$('game-sheet-close').addEventListener('click', closeGameMenu);
+$('game-exit').addEventListener('click', () => { closeGameMenu(); stopPlay(); });
+$('game-save').addEventListener('click', () => saveGame(true));
+$('game-load').addEventListener('click', loadGame);
+$('game-fullscreen').addEventListener('click', toggleFullscreen);
+$('game-sound').addEventListener('click', toggleSound);
+
+// Periodic autosave while a mission is actually running.
+setInterval(() => {
+  if (state.host && !$('game-sheet').classList.contains('hidden')) return;
+  if (state.host && currentRun()) saveGame(false);
+}, 20000);
 
 // ---------- details ----------
 async function loadBuildInfo() {

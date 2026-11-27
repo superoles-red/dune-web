@@ -28,6 +28,7 @@ import {
   installGameTable,
   cString,
 } from '../runtime/loader.mjs';
+import { DuneAudio } from './audio.mjs';
 
 const DEFAULT_RUNTIME_URL = new URL('../runtime/runtime.wasm', import.meta.url).href;
 const DEFAULT_GAME_URL = new URL('../../.local/wasm-full/game.wasm', import.meta.url).href;
@@ -35,6 +36,10 @@ const DEFAULT_GAME_URL = new URL('../../.local/wasm-full/game.wasm', import.meta
 const FALLBACK_MASTER_HZ = 53693175; // Genesis NTSC master clock (68k × 7)
 const EMULATED_FPS = 60;
 const ROM_BYTES_EXPECTED = 1024 * 1024;
+/* Path A has no SDL window; the camera/tap adapters read this virtual surface
+   (native frame coordinates, not CSS pixels).  See docs/WASM-TOUCH.md. */
+const TOUCH_WIDTH = 320;
+const TOUCH_HEIGHT = 224;
 
 function be32(bytes, offset) {
   return (
@@ -71,6 +76,11 @@ export class DuneHost {
     this.gameUrl = options.gameUrl ?? DEFAULT_GAME_URL;
     this.onStatus = options.onStatus ?? (() => {});
     this.log = options.log ?? ((...args) => console.log('[host]', ...args));
+    /* Virtual SDL surface for the pinned camera/tap adapters (path A). */
+    this.virtualWindow = options.virtualWindow ?? { width: TOUCH_WIDTH, height: TOUCH_HEIGHT };
+    /* Run the path-B input observers before each native step so queued touch
+       input reaches the original game code (disable for pure-emulation runs). */
+    this.touchStepping = options.touchStepping ?? true;
 
     this.rt = null;
     this.abi = null;
@@ -87,9 +97,14 @@ export class DuneHost {
     this.loadedAt = null;
     this.booted = false;
     this.fault = null;
+    this.touch = { attached: false, width: TOUCH_WIDTH, height: TOUCH_HEIGHT, dragging: false, error: null };
 
     this.imageData = null;
     this.lastSerial = -1;
+    this.audio = new DuneAudio({ host: this });
+    this.presentation = 'auto';        // 'auto' | 'native' | 'expanded'
+    this.expandedIntervalMs = 33;      // expanded overview redraw budget (~30 fps)
+    this.lastExpandedAt = 0;
     this.lastFrameWidth = 0;
     this.lastFrameHeight = 0;
     this.frameCount = 0;
@@ -145,7 +160,7 @@ export class DuneHost {
         throw new HostError(`cannot fetch runtime.wasm: HTTP ${response.status} ${this.runtimeUrl}`);
       }
       const runtimeBytes = new Uint8Array(await response.arrayBuffer());
-      this.rt = await loadRuntime({ wasmBytes: runtimeBytes });
+      this.rt = await loadRuntime({ wasmBytes: runtimeBytes, virtualWindow: this.virtualWindow });
       this.abi = initRuntime(this.rt);
       this.memory = this.rt.memory;
       this.exports = this.rt.exports;
@@ -291,6 +306,9 @@ export class DuneHost {
       // Compile every page handler before the first frame (no emulated steps).
       this.game.exports.warmup_all(this.cpuPointer);
     }
+    // Path A has no run_main()/sdl_host_open(); attach the virtual 320x224 SDL
+    // surface so the pinned camera/tap/pan/zoom adapters get real geometry.
+    this.attachVirtualWindow();
     this.booted = true;
     this.fault = null;
     this.#syncCpu();
@@ -317,6 +335,12 @@ export class DuneHost {
     return this.#view().getUint32(this.cpuPointer + offset, true);
   }
 
+  readU64(offset) {
+    const view = this.#view();
+    const base = this.cpuPointer + offset;
+    return view.getUint32(base, true) + view.getUint32(base + 4, true) * 0x100000000;
+  }
+
   writeU32(offset, value) {
     this.#view().setUint32(this.cpuPointer + offset, value >>> 0, true);
   }
@@ -326,8 +350,10 @@ export class DuneHost {
   }
 
   #syncCpu() {
-    this.metrics.instructions = this.readU32(this.offsets.OFF_STEPS);
-    this.metrics.masterCycles = this.readU32(this.offsets.OFF_MASTER_CYCLES);
+    // `steps` and `master_cycles` are 64-bit counters; reading only the low
+    // word wrapped after ~80 s of emulated time and stalled the frame loop.
+    this.metrics.instructions = this.readU64(this.offsets.OFF_STEPS);
+    this.metrics.masterCycles = this.readU64(this.offsets.OFF_MASTER_CYCLES);
     this.metrics.emulatedSeconds = this.metrics.masterCycles / this.masterHz;
     this.metrics.renderedFrames = this.exports.dune_web_frame_serial
       ? this.exports.dune_web_frame_serial()
@@ -354,12 +380,56 @@ export class DuneHost {
     return this.metrics;
   }
 
-  /* --------------------------------------------------------------- loop -- */
+  /* ---------------------------------------------------------- touch/input -- */
+
+  /**
+   * Attach the path-A virtual SDL window (320x224 by default).
+   *
+   * Must run after init()/loadGame(); boot() calls it automatically.  The
+   * pinned adapter code only needs ``em_host.window``/``renderer`` to be non-NULL
+   * and the SDL geometry queries to answer 320x224; no SDL window/renderer/GL
+   * context is created (the C build wraps the SDL geometry symbols).
+   * Returns the touch state (never throws: an older runtime just reports why).
+   */
+  attachVirtualWindow({ width = this.virtualWindow?.width ?? TOUCH_WIDTH, height = this.virtualWindow?.height ?? TOUCH_HEIGHT } = {}) {
+    if (!this.rt) return (this.touch = { ...this.touch, attached: false, error: 'runtime not loaded' });
+    try {
+      if (typeof this.exports.dune_web_attach_virtual_window !== 'function') {
+        throw new HostError('runtime.wasm has no dune_web_attach_virtual_window (rebuild runtime/wasm)');
+      }
+      const attached = this.exports.dune_web_attach_virtual_window(width, height);
+      if (attached) this.exports.dune_web_resize(width, height);
+      const w = this.exports.dune_web_virtual_window_width?.() ?? width;
+      const h = this.exports.dune_web_virtual_window_height?.() ?? height;
+      this.touch = {
+        attached: !!attached,
+        width: w,
+        height: h,
+        dragging: false,
+        error: attached ? null : 'dune_web_attach_virtual_window returned 0',
+        webStep: typeof this.exports.dune_rt_web_step === 'function',
+        cssMock: !!this.virtualWindow,
+      };
+      this.log(`virtual window ${w}x${h} attached=${this.touch.attached} webStep=${this.touch.webStep}`);
+    } catch (error) {
+      this.touch = { ...this.touch, attached: false, error: error.message };
+      this.log(`virtual window unavailable: ${error.message}`);
+    }
+    return this.touch;
+  }
+
+  /** The step function the host loop should use (touch observers when attached). */
+  stepFunction() {
+    if (this.touch?.attached && this.touchStepping && typeof this.exports?.dune_rt_web_step === 'function') {
+      return this.exports.dune_rt_web_step;
+    }
+    return this.exports?.dune_rt_machine_step;
+  }
 
   /** Advance exactly ``count`` machine steps (one translated 68000 instruction each). */
   advanceSteps(count) {
     if (!this.booted) throw new HostError('boot() before advancing the machine');
-    const step = this.exports.dune_rt_machine_step;
+    const step = this.stepFunction();
     const started = performance.now();
     const total = Math.max(0, Math.floor(count));
     let done = 0;
@@ -438,15 +508,48 @@ export class DuneHost {
       if (credit > maxCatchUp) credit = maxCatchUp;
       const target = this.lastCycles + credit;
       const started = performance.now();
-      const step = this.exports.dune_rt_machine_step;
+      const step = this.stepFunction();
+      // A frame may never emulate more than a bounded number of chunks, and a
+      // stalled machine (paused/halted/observer hold) must not spin the page.
+      let chunks = 0;
+      let stalledChunks = 0;
+      let progressed = this.metrics.masterCycles;
       while (this.metrics.masterCycles < target && !this.fault) {
         const remaining = target - this.metrics.masterCycles;
         const block = Math.min(512, Math.max(16, Math.ceil(remaining / 32)));
         for (let i = 0; i < block; i += 1) step();
         this.#syncCpu();
+        chunks += 1;
+        if (this.metrics.masterCycles > progressed) {
+          progressed = this.metrics.masterCycles;
+          stalledChunks = 0;
+        } else {
+          stalledChunks += 1;
+        }
+        if (stalledChunks > 3 || chunks > 4096) {
+          this.metrics.stalled = true;
+          if (!this.stallLogged) {
+            this.stallLogged = true;
+            try {
+              console.warn('[host] emulation stalled', JSON.stringify({ chunks, target, masterCycles: this.metrics.masterCycles, debug: this.debugJson(), camera: this.cameraDebug() }).slice(0, 2000));
+            } catch { /* diagnostics only */ }
+          }
+          break;
+        }
       }
+      if (!this.metrics.stalled) this.stallLogged = false;
       this.lastCycles = this.metrics.masterCycles;
-      if (this.metrics.renderedFrames !== this.lastSerial) this.drawFrame();
+      this.audio.pump();
+      const expanded = this.presentation === 'expanded'
+        || (this.presentation === 'auto' && this.#missionMap());
+      if (expanded) {
+        if (now - this.lastExpandedAt >= this.expandedIntervalMs) {
+          this.drawExpandedFrame();
+          this.lastExpandedAt = now;
+        }
+      } else if (this.metrics.renderedFrames !== this.lastSerial) {
+        this.drawFrame();
+      }
       this.metrics.frameMs = performance.now() - started;
       this._rafFrameTimes.push(now);
       while (this._rafFrameTimes.length > 30) this._rafFrameTimes.shift();
@@ -464,6 +567,36 @@ export class DuneHost {
     this.running = false;
     if (this.rafHandle) cancelAnimationFrame(this.rafHandle);
     this.rafHandle = 0;
+  }
+
+  /* --------------------------------------------------------- presentation -- */
+
+  /** Presentation policy: 'auto' shows the expanded mission overview on the map. */
+  setPresentation(mode) {
+    if (!['auto', 'native', 'expanded'].includes(mode)) throw new HostError(`unknown presentation ${mode}`);
+    this.presentation = mode;
+    this.refreshPresentation();
+    return this.presentation;
+  }
+
+  #missionMap() {
+    try {
+      const camera = this.cameraDebug();
+      return !!(camera && camera.map);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Redraw the current view immediately (after a pan/zoom or scene change). */
+  refreshPresentation() {
+    if (this.presentation === 'expanded' || (this.presentation === 'auto' && this.#missionMap())) {
+      const drawn = this.drawExpandedFrame();
+      this.lastExpandedAt = performance.now();
+      if (drawn) return 'expanded';
+    }
+    this.drawFrame();
+    return 'native';
   }
 
   /* ------------------------------------------------------------- frames -- */
@@ -579,12 +712,166 @@ export class DuneHost {
       zoom: has('dune_web_zoom'),
       begin: has('dune_web_begin'),
       end: has('dune_web_end'),
+      virtualWindow: has('dune_web_attach_virtual_window'),
+      virtualWindowAttached: !!this.touch?.attached,
+      expandedView: has('dune_web_expanded_frame_rgba'),
+      webStep: has('dune_rt_web_step'),
       campaignInput: has('dune_web_campaign_input'),
       campaignJson: has('dune_web_campaign_json'),
       menuSelectReset: has('dune_web_menu_select_reset'),
       resetClock: has('dune_web_reset_clock'),
       save: has('dune_save_state_to_buffer') && has('dune_load_state_from_buffer'),
       audioLevels: has('dune_web_audio_levels'),
+    };
+  }
+
+  /**
+   * Screen coordinates are native-frame coordinates of the virtual window
+   * (default 320x224).  Map a DOM pointer position to that space with
+   * ``canvas.getBoundingClientRect()``: ``x = (clientX - rect.left) * 320 /
+   * rect.width`` (same for y with 224/rect.height).  The app pages mobile
+   * video at CSS size, so do not feed raw CSS pixels here.
+   *
+   * ``tapScreen`` returns the adapter's context:
+   *   1 = world/map (queued a native world select, not an A/B/C edge),
+   *   2 = native UI/menu hotspot (queued a native select click),
+   *   3 = minimap recentre, 0 = outside/invalid/no window.
+   */
+  tapScreen(x, y) {
+    if (!this.exports?.dune_web_tap_screen) return 0;
+    return this.exports.dune_web_tap_screen(x, y);
+  }
+
+  /** Position the native pointer/preview without clicking (returns 1 world / 2 UI). */
+  hoverScreen(x, y) {
+    if (!this.exports?.dune_web_hover_screen) return 0;
+    return this.exports.dune_web_hover_screen(x, y);
+  }
+
+  /** Begin an explicit drag gesture in virtual-window coordinates (returns 1). */
+  beginPan(x = this.touch.width / 2, y = this.touch.height / 2) {
+    if (!this.exports?.dune_web_begin) {
+      this.touch.dragging = false;
+      return 0;
+    }
+    const begun = this.exports.dune_web_begin(x, y);
+    this.touch.dragging = !!begun;
+    return begun;
+  }
+
+  /**
+   * Pan the expanded mission camera by a screen delta while a drag is active
+   * (call beginPan() first).  For a one-shot pan use pan(), which begins and
+   * ends the gesture around a single delta.
+   */
+  panCamera(dx, dy) {
+    if (!this.exports?.dune_web_pan) return 0;
+    return this.exports.dune_web_pan(dx, dy);
+  }
+
+  /** End the drag gesture (also clears minimap drag state). */
+  endPan() {
+    this.touch.dragging = false;
+    if (this.exports?.dune_web_end) this.exports.dune_web_end();
+    return 1;
+  }
+
+  /**
+   * One-shot pan: begins a world drag at the window centre when needed, applies
+   * the delta and ends it.  Returns dune_web_pan() (1 while a mission map drag
+   * is accepted).  For continuous gestures use beginPan/panCamera/endPan.
+   */
+  pan(dx, dy) {
+    if (!this.exports?.dune_web_pan) return 0;
+    const auto = !this.touch.dragging;
+    if (auto && !this.beginPan()) return 0;
+    const result = this.exports.dune_web_pan(dx, dy);
+    if (auto) this.endPan();
+    return result;
+  }
+
+  /**
+   * Zoom the mission camera.  ``factor`` multiplies the current zoom
+   * (100 = native 1:1, 50 = widest overview); the adapter clamps to [50,100],
+   * so the first call with 1.2 returns 100 and ``0.8`` is the useful "zoom out"
+   * step.  Returns the new zoom percentage, or 0 on a non-map screen.
+   */
+  zoomCamera(factor, anchorX = this.touch.width / 2, anchorY = this.touch.height / 2) {
+    if (!this.exports?.dune_web_zoom) return 0;
+    return this.exports.dune_web_zoom(factor, anchorX, anchorY);
+  }
+
+  /** Kept for earlier callers: aliases for tapScreen/pan/zoomCamera. */
+  tap(x, y) {
+    return this.tapScreen(x, y);
+  }
+
+  zoom(factor, anchorX = this.touch.width / 2, anchorY = this.touch.height / 2) {
+    return this.zoomCamera(factor, anchorX, anchorY);
+  }
+
+  /**
+   * Software expanded mission overview (what path B draws through SDL).
+   *
+   * Returns ``{ width, height, rgba }`` for a frame-sized RGBA buffer, or null
+   * outside the mission map.  This is a presentation-only traversal (shadow CPU,
+   * no game-state writes); it is expensive, so call it on demand (screenshots,
+   * overview UI), not inside the rAF loop.
+   */
+  expandedFrame() {
+    if (!this.exports?.dune_web_expanded_frame_rgba) return null;
+    const pointer = this.exports.dune_web_expanded_frame_rgba();
+    if (!pointer) return null;
+    const width = this.exports.dune_web_expanded_frame_width();
+    const height = this.exports.dune_web_expanded_frame_height();
+    if (!width || !height) return null;
+    return { width, height, rgba: new Uint8Array(this.memory.buffer, pointer, width * height * 4) };
+  }
+
+  /** Draw the expanded mission overview (pan/zoom result) into the canvas. */
+  drawExpandedFrame() {
+    const frame = this.expandedFrame();
+    if (!frame || !this.canvas || !this.ctx) return null;
+    if (this.canvas.width !== frame.width || this.canvas.height !== frame.height) {
+      this.canvas.width = frame.width;
+      this.canvas.height = frame.height;
+      this.imageData = null;
+    }
+    if (!this.imageData || this.imageData.width !== frame.width) {
+      this.imageData = this.ctx.createImageData(frame.width, frame.height);
+    }
+    this.imageData.data.set(frame.rgba);
+    this.ctx.putImageData(this.imageData, 0, 0);
+    return { width: frame.width, height: frame.height };
+  }
+
+  /** Pose/geometry as seen by the pinned adapters (null without a map frame). */
+  cameraDebug() {
+    if (!this.exports?.dune_web_camera_debug) return null;
+    try {
+      return JSON.parse(decodeCString(this.rt, this.exports.dune_web_camera_debug()));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Selection/world-intent state of the mission adapters. */
+  selectionDebug() {
+    if (!this.exports?.dune_web_selection_debug) return null;
+    try {
+      return JSON.parse(decodeCString(this.rt, this.exports.dune_web_selection_debug()));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Touch readiness plus the last observed adapter state (for UI/tests). */
+  touchInfo() {
+    return {
+      ...this.touch,
+      canvas: this.canvas ? { width: this.canvas.width, height: this.canvas.height } : null,
+      camera: this.cameraDebug(),
+      selection: this.selectionDebug(),
     };
   }
 
@@ -616,21 +903,6 @@ export class DuneHost {
     return this.exports.dune_web_campaign_input(action, value);
   }
 
-  tap(x, y) {
-    if (!this.exports?.dune_web_tap_screen) return 0;
-    return this.exports.dune_web_tap_screen(x, y);
-  }
-
-  pan(dx, dy) {
-    if (!this.exports?.dune_web_pan) return 0;
-    return this.exports.dune_web_pan(dx, dy);
-  }
-
-  zoom(factor, anchorX = 160, anchorY = 112) {
-    if (!this.exports?.dune_web_zoom) return 0;
-    return this.exports.dune_web_zoom(factor, anchorX, anchorY);
-  }
-
   /* --------------------------------------------------------------- save -- */
 
   saveState() {
@@ -647,7 +919,10 @@ export class DuneHost {
     if (data.byteLength > capacity) throw new HostError(`save state is ${data.byteLength} B, buffer is ${capacity} B`);
     new Uint8Array(this.memory.buffer, pointer, data.byteLength).set(data);
     const ok = this.exports.dune_load_state_from_buffer(data.byteLength);
-    if (ok) this.#syncCpu();
+    if (ok) {
+      this.#syncCpu();
+      this.audio.flush();
+    }
     return ok === 1;
   }
 

@@ -64,7 +64,7 @@ except ImportError:  # executed as ``python3 tools/wasm_integration/build_full_m
 
 ensure_tools_on_path()
 
-from wasm_emitter import abi, check_page, game_module  # noqa: E402
+from wasm_emitter import abi, check_page, game_module, z80_translate  # noqa: E402
 from wasm_emitter.translate import UnsupportedInstruction  # noqa: E402
 
 DEFAULT_OUT = ROOT / ".local" / "wasm-full"
@@ -98,6 +98,7 @@ def build_full_game_module(
     decoded=None,
     runtime_descriptor: Optional[runtime_abi.RuntimeAbi] = None,
     write: bool = True,
+    z80: bool = False,
 ) -> dict:
     """Build the single all-pages ``game.wasm``; returns a JSON-able report.
 
@@ -130,6 +131,21 @@ def build_full_game_module(
     instructions = page_instructions(program)
     if not instructions:
         raise BuildError("the ROM decoded to zero instructions")
+    # 2b. Z80 program: the pinned six-image plan (2577 guarded PCs / 3095
+    #     variants).  Off by default so the shipped stub artifact/tests keep
+    #     working; ``--z80`` emits the real translated_z80_step that audio needs.
+    z80_program = None
+    z80_summary = None
+    if z80:
+        z80_started = time.perf_counter()
+        z80_program = z80_translate.analyze_dune_z80(rom)
+        z80_summary = z80_translate.z80_program_summary(z80_program)
+        if z80_summary["errors"]:
+            raise BuildError("Z80 analysis produced %d decode error(s)"
+                             % len(z80_summary["errors"]))
+        z80_ms = (time.perf_counter() - z80_started) * 1000.0
+    else:
+        z80_ms = 0.0
     missing = game_module.unsupported_ops(instructions)
     if missing:
         raise BuildError("unsupported operations in the full program: %s" % missing)
@@ -154,7 +170,9 @@ def build_full_game_module(
         program, instructions, rt_abi.cpu_abi, layout,
         label="full", helper_prefix=HELPER_PREFIX,
         fail_code_map=dict(rt_abi.fail_codes.canonical_to_runtime),
-        z80_stub=True, instruction_meta=False,
+        z80_stub=not z80,
+        z80_program=z80_program,
+        instruction_meta=False,
     )
     build_ms = (time.perf_counter() - build_started) * 1000.0
 
@@ -163,6 +181,7 @@ def build_full_game_module(
     module_checks = runtime_abi.verify_game_module(
         inspect, rt_abi.export_names, HELPER_PREFIX,
         expected_exports=FULL_GAME_EXPORTS,
+        extra_helpers=z80_translate.Z80_HELPER_NAMES if z80 else (),
     )
     if game_meta["pages"] != pages:
         raise BuildError("emitted pages %r != decoded pages %r"
@@ -243,6 +262,7 @@ def build_full_game_module(
         "decode": decode_stats,
         "instructions": len(instructions),
         "pages": pages,
+        "z80": z80_summary,
         "page_count": len(pages),
         "module": game_meta["modules"],
         "checks": module_checks,
@@ -251,6 +271,7 @@ def build_full_game_module(
         "timing_ms": {
             "abi": round(abi_ms, 1),
             "decode": round(decode_ms, 1),
+            "z80": round(z80_ms, 1),
             "build": round(build_ms, 1),
             "total": round(total_ms, 1),
         },
@@ -280,6 +301,9 @@ def main(argv=None) -> int:
     parser.add_argument("--manifest", type=Path, default=runtime_abi.DEFAULT_MANIFEST)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--node", default=None)
+    parser.add_argument("--z80", action="store_true",
+                        help="emit the real translated_z80_step (Z80 sound) "
+                             "instead of the UNTRANSLATED stub")
     parser.add_argument("--allow-lossy-fail-codes", action="store_true",
                         help="build even if instructions need LINE_A/LINE_F "
                              "(no exact runtime fail code exists)")
@@ -292,6 +316,7 @@ def main(argv=None) -> int:
             loader=args.loader, manifest=args.manifest, out_dir=args.out,
             node=args.node,
             allow_lossy_fail_codes=args.allow_lossy_fail_codes,
+            z80=args.z80,
         )
     except (BuildError, runtime_abi.RuntimeAbiError, UnsupportedInstruction) as error:
         print("build_full_module: %s" % error, file=sys.stderr)
@@ -316,6 +341,10 @@ def main(argv=None) -> int:
           % (result["decode"]["rom_sha256"][:16], result["instructions"],
              result["page_count"], result["decode"].get("ram_variants", 0),
              timing["decode"]))
+    if result.get("z80"):
+        print("Z80:      %d guarded PCs, %d variants, %d mutable expansions"
+              % (result["z80"]["pcs"], result["z80"]["variants"],
+                 result["z80"]["mutable_expansions"]))
     print("game.wasm: %d B (%d handlers, %.1f B/instr), %d functions, built in %.0f ms"
           % (module["bytes"], module["handler_bytes"],
              module["bytes_per_instruction"], len(result["pages"]),

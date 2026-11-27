@@ -2,10 +2,12 @@
   "format": "dune-game-reference/1",
   "rom_sha256": "b1bbe73186e0902fa8b2db0f227bf306e3d6a80fe592f927d1aa9d60c0f335ba",
   "abi_hash": "fb47e1386ee5c802a2cb2a58b98ec29367db79e00c7f32b355020abbc4be1db5",
-  "expected_game_sha256": "06ecc2226b5ba1bd1220097b752c680cad0430b278690672427dc806cac7ef93",
-  "expected_game_bytes": 3142822,
+  "expected_game_sha256": "7704de7b9e5a7a61a02812e044c82b1968178399bc51f31dbeff0683b006e5fe",
+  "expected_game_bytes": 3553097,
   "instructions": 40382,
   "pages": 48,
-  "emitter": "tools/wasm_emitter (browser build, z80 stub)",
-  "note": "Deterministic output of the on-device emitter for the supported USA dump. Regenerate with tools/wasm_integration/build_full_module.py when the emitter changes."
+  "emitter": "tools/wasm_emitter (browser build, real Z80 translation) \u2014 re-pinned 2026-11-27",
+  "note": "Deterministic output of the on-device emitter for the supported USA dump, including the real translated_z80_step (2577 guarded PCs / 3095 variants). Regenerate with tools/wasm_integration/build_full_module.py --z80 when the emitter changes.",
+  "z80": true,
+  "z80_variants": 3095
 }

@@ -129,6 +129,17 @@
                    letter-spacing: .08em; }
   .game-btn.ghost { background: rgba(10, 8, 5, .5); width: 40px; height: 40px; border-radius: 50%;
                     font-size: 15px; }
+  .game-top-right { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 3; }
+  /* Both orientations must be usable: fill the available width in portrait
+     (the 320x224 frame stays pixel-perfect), fit the height in landscape. */
+  @media (orientation: portrait) {
+    #game-canvas { width: 100vw; height: auto; }
+    .game-controls { padding: 0 10px; }
+  }
+  @media (orientation: landscape) {
+    #game-canvas { width: auto; height: 100vh; }
+    .game-controls { padding: 0 24px; }
+  }
 
   footer { color: #6d5c43; font-size: 11px; text-align: center; padding: 6px 0 0; }
   footer a { color: #8a765a; }
@@ -207,7 +218,10 @@
       <div class="game-loading" id="game-loading"><div class="spinner"></div><span id="game-loading-text">Запускаем игру…</span></div>
     </div>
     <div class="game-top">
-      <button class="game-btn ghost" id="game-back" aria-label="Назад" title="Назад">✕</button>
+      <button class="game-btn ghost" id="game-back" aria-label="Выйти" title="Выйти">✕</button>
+    </div>
+    <div class="game-top-right">
+      <button class="game-btn ghost" id="game-menu" aria-label="Меню" title="Меню">☰</button>
     </div>
     <div class="game-controls" id="game-controls">
       <div class="dpad">
@@ -223,6 +237,20 @@
       </div>
     </div>
   </section>
+
+  <!-- In-game menu sheet -->
+  <div class="sheet hidden" id="game-sheet" role="dialog" aria-modal="true" aria-labelledby="game-sheet-title">
+    <div class="inner">
+      <h2 id="game-sheet-title">Пауза</h2>
+      <p class="status" id="game-sheet-status">—</p>
+      <button class="btn" id="game-save">Сохранить</button>
+      <button class="btn ghost" id="game-load">Загрузить</button>
+      <button class="btn ghost" id="game-sound">Звук: выкл</button>
+      <button class="btn ghost" id="game-fullscreen">На весь экран</button>
+      <button class="btn ghost" id="game-exit">Выйти из игры</button>
+      <button class="btn ghost small" id="game-sheet-close">Продолжить</button>
+    </div>
+  </div>
 
   <!-- Technical details, collapsed -->
   <details id="details">

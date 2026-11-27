@@ -70,24 +70,24 @@
   "format": "dune-runtime-abi/1",
   "helper_abi_version": 1,
   "memory_layout": {
-    "cpu": 380056,
-    "cram": 511256,
-    "frame": 511520,
+    "cpu": 380072,
+    "cram": 511272,
+    "frame": 511536,
     "frame_bytes": 230400,
     "pages": 1024,
-    "ram": 380134,
-    "rom": 19205400,
+    "ram": 380150,
+    "rom": 19205432,
     "rom_size": 1048576,
-    "save_buffer": 117904,
+    "save_buffer": 117920,
     "save_buffer_bytes": 262144,
-    "vdp": 445696,
-    "vram": 445720,
-    "vsram": 511384,
-    "z80_ram": 741936
+    "vdp": 445712,
+    "vram": 445736,
+    "vsram": 511400,
+    "z80_ram": 741952
   },
   "memory_pages": 1024,
   "pointer_bits": 32,
   "rom_bytes": 1048576,
-  "runtime_bytes": 894968,
-  "runtime_sha256": "205ac655ff189efeff4da5068add92e4523b888c5df37f1466e4ddacdd965b66"
+  "runtime_bytes": 898726,
+  "runtime_sha256": "94b5f8a4d84d2358d1c06a2807e9de4a9f3c823b110d3f338a6e6bb56d4d3c68"
 }

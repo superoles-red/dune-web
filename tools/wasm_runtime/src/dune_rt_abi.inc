@@ -527,3 +527,12 @@ EMSCRIPTEN_KEEPALIVE uint32_t dune_z80_block(uint32_t cpu, uint32_t direction,
 EMSCRIPTEN_KEEPALIVE uint32_t dune_z80_rotate(uint32_t cpu, uint32_t value, uint32_t kind) {
     return z80_rotate((CPU *)(uintptr_t)cpu, (uint8_t)value, kind);
 }
+
+/* ------------------------------------------------------------------------- */
+/* Virtual SDL window + browser input stepping (path A)                      */
+/* ------------------------------------------------------------------------- */
+/* `runtime.wasm` is STANDALONE_WASM and the JS host drives the CPU directly;
+ * no SDL window exists.  This MIT-only shim answers the geometry queries of
+ * the pinned camera/tap adapters and can run the path-B input observers per
+ * instruction.  Exports only: the ABI descriptor and DSAV layout are unchanged. */
+#include "dune_rt_virtual_window.inc"

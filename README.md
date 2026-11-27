@@ -18,7 +18,8 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
    Chrome/Safari и нажмите «Выбрать ROM» — укажите свой
    `Dune - The Battle for Arrakis (USA).gen` (1 048 576 байт). Файл не покидает устройство.
 2. Дождитесь экрана «Игра собрана» и нажмите «Играть»: сборка идёт на устройстве (первый раз —
-   минуты на телефоне, повторная — из кэша). Откроется оригинальная игра.
+   минуты на телефоне, повторная — из кэша). Откроется оригинальная игра со звуком; карта
+   прокручивается пальцем, масштабируется щипком.
 3. Кнопка «Сохранения» рядом: «Загрузить файл» принимает `*.dune-save.json` из старой версии
    (`FILES & OFFLINE` → `DOWNLOAD SAVE`), «Скачать файл» делает резервную копию.
 
@@ -46,12 +47,17 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
   save API, диспетчеризация) — [docs/WASM-RUNTIME.md](docs/WASM-RUNTIME.md); эмиттер реальных
   страниц сверен с C-оракулом на 21 360 состояниях, 0 расхождений —
   [docs/WASM-EMITTER.md](docs/WASM-EMITTER.md).
-- **Игра запускается в браузере из ROM:** полный `game.wasm` (48 страниц, 40 382 инструкции,
-  3 142 822 B, SHA `06ecc222…`) генерируется на устройстве Pyodide-эмиттером и исполняется в
-  `runtime.wasm` через браузерный хост — оригинальные меню, выбор дома и вступление на экране,
-  60 FPS ([docs/WASM-HOST.md](docs/WASM-HOST.md), [docs/WASM-FULL-MODULE.md](docs/WASM-FULL-MODULE.md)).
-- **Пока нет:** звука (Z80 не переведён) и тач-камеры в миссии (адаптеры требуют SDL-геометрии;
-  меню/дом/вступление управляются кнопками).
+- **Игра играбельна в браузере из ROM:** полный `game.wasm` (48 страниц, 40 382 инструкции 68000
+  + 3 095 Z80-вариантов, 3 553 097 B, SHA `7704de7b…`) генерируется на устройстве
+  Pyodide-эмиттером и исполняется в `runtime.wasm` — меню, выбор дома, вступление, миссия с
+  картой, **звук** (ymfm/PSG) и **тач-камера** (pan/pinch/инерция/миникарта). Расширенный обзор
+  миссии рисуется из `expandedFrame()` ([docs/WASM-HOST.md](docs/WASM-HOST.md),
+  [docs/WASM-AUDIO.md](docs/WASM-AUDIO.md), [docs/WASM-TOUCH.md](docs/WASM-TOUCH.md)).
+- **Перенесён ввод старой версии:** gestures/pan-inertia/map-input/order-input/placement —
+  [docs/INPUT-PORT.md](docs/INPUT-PORT.md); анализ всей старой версии —
+  [docs/PORTING-FROM-OLD.md](docs/PORTING-FROM-OLD.md).
+- **Пока нет:** HUD-кнопок контекстных действий и HTML-меню зданий, RU/EN-оболочки, справки,
+  установки/PWA и полной проверки кампании на устройствах.
 
 ## Как запустить локально
 

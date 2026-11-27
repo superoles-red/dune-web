@@ -154,9 +154,19 @@ function wasiStub(memory, name) {
  * a no-op function for every other import.  ``overrides`` is a nested
  * ``{ env: { name: fn }, wasi_snapshot_preview1: { ... } }`` map for the real
  * host (SDL/EM_JS/audio bridges) and for tests.
+ *
+ * ``virtualWindow`` ({ width, height }) turns on the "path A" virtual-window
+ * mocks.  Only one of the SDL geometry dependencies is a real ``env`` import
+ * (``emscripten_get_element_css_size``, which writes two doubles); the
+ * ``SDL_*`` geometry calls are compiled into runtime.wasm and are answered by
+ * the C ``--wrap`` shim instead (tools/wasm_runtime/src/dune_rt_virtual_window.inc,
+ * enabled by ``dune_web_attach_virtual_window()``).  Defaults to no mock so
+ * pure module tests keep the zero-stub surface.
  */
-export function makeImportObject(module, { memory, overrides = {}, onStub = null } = {}) {
+export function makeImportObject(module, { memory, overrides = {}, onStub = null, virtualWindow = null } = {}) {
   const importObject = {};
+  const vw = virtualWindow ? Math.max(1, Math.trunc(virtualWindow.width ?? 320)) : 0;
+  const vh = virtualWindow ? Math.max(1, Math.trunc(virtualWindow.height ?? 224)) : 0;
   for (const entry of WebAssembly.Module.imports(module)) {
     const group = (importObject[entry.module] ??= {});
     const override = overrides[entry.module]?.[entry.name];
@@ -167,9 +177,21 @@ export function makeImportObject(module, { memory, overrides = {}, onStub = null
     if (entry.kind === 'memory') {
       group[entry.name] = memory;
     } else if (entry.kind === 'function') {
-      group[entry.name] = entry.module.startsWith('wasi_')
-        ? wasiStub(memory, entry.name)
-        : (() => 0);
+      if (virtualWindow && entry.module === 'env' && entry.name === 'emscripten_get_element_css_size') {
+        /* void emscripten_get_element_css_size(const char*, double *w, double *h);
+           The pinned adapters treat the emscripten result 0 as success and fall
+           back to the SDL window size for non-positive CSS sizes. */
+        group[entry.name] = (_target, widthPtr, heightPtr) => {
+          const view = new DataView(memory.buffer);
+          if (widthPtr) view.setFloat64(widthPtr, vw, true);
+          if (heightPtr) view.setFloat64(heightPtr, vh, true);
+          return 0;
+        };
+      } else {
+        group[entry.name] = entry.module.startsWith('wasi_')
+          ? wasiStub(memory, entry.name)
+          : (() => 0);
+      }
       if (onStub) onStub(entry, group[entry.name]);
     } else if (entry.kind === 'global') {
       group[entry.name] = new WebAssembly.Global({ value: 'i32', mutable: true }, 0);
@@ -207,10 +229,10 @@ async function readWasmSource({ url, wasmBytes, wasmModule }) {
  * Call :func:`initRuntime` (or ``exports.dune_rt_init()``) before reading ABI
  * addresses such as the ROM buffer.
  */
-export async function loadRuntime({ url = null, wasmBytes = null, wasmModule = null, memory = null, importOverrides = {}, skipInitialize = false } = {}) {
+export async function loadRuntime({ url = null, wasmBytes = null, wasmModule = null, memory = null, importOverrides = {}, virtualWindow = null, skipInitialize = false } = {}) {
   const { module, bytes } = await readWasmSource({ url, wasmBytes, wasmModule });
   const sharedMemory = memory ?? createMemory();
-  const imports = makeImportObject(module, { memory: sharedMemory, overrides: importOverrides });
+  const imports = makeImportObject(module, { memory: sharedMemory, overrides: importOverrides, virtualWindow });
   const instance = await WebAssembly.instantiate(module, imports);
   if (!skipInitialize && typeof instance.exports._initialize === 'function') {
     instance.exports._initialize();
@@ -360,4 +382,24 @@ export function setWindow(rt, enabled) {
   rt.exports.dune_rt_set_window(enabled ? 1 : 0);
 }
 
-export default { loadRuntime, initRuntime, readAbi, createMemory };
+/**
+ * Attach the path-A virtual SDL window (see docs/WASM-TOUCH.md).
+ *
+ * Call after ``initRuntime()`` and after the game module is installed.  The
+ * pinned camera/tap/hover adapters then see a valid 320x224 surface instead of
+ * NULL ``SDL_Window``/``SDL_Renderer`` pointers.  Nothing is presented through
+ * SDL; rendering stays on ``dune_web_frame_rgb()``.
+ *
+ * Returns the C function's result (1 on success); throws when the runtime predates
+ * the export so a stale runtime.wasm fails loudly instead of silently returning 0.
+ */
+export function attachVirtualWindow(rt, width = 320, height = 224) {
+  if (typeof rt.exports.dune_web_attach_virtual_window !== 'function') {
+    throw new Error('runtime.wasm has no dune_web_attach_virtual_window (rebuild runtime/wasm)');
+  }
+  const attached = rt.exports.dune_web_attach_virtual_window(width, height);
+  if (attached) rt.exports.dune_web_resize(width, height);
+  return attached;
+}
+
+export default { loadRuntime, initRuntime, readAbi, createMemory, attachVirtualWindow };

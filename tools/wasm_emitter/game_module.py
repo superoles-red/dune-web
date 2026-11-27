@@ -26,6 +26,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from . import abi
 from .encoder import Code, Func, I32, Module
 from .translate import SCRATCH_LOCALS, Scratch, Translator, UnsupportedInstruction
+from . import z80_translate
 
 PAGE_SHIFT = 12
 PAGE_SIZE = 1 << PAGE_SHIFT
@@ -93,6 +94,22 @@ class ModuleBuilder:
         self.translator = Translator(self.module, self.imports, abi_desc, rom,
                                      fail_code_map=self.fail_code_map)
         self.fail_codes_used: Set[int] = set()
+        self.z80_imported = False
+
+    # -- optional Z80 helpers ---------------------------------------------
+    def import_z80_helpers(self) -> None:
+        """Declare the ``env.dune_z80_*`` imports of a real Z80 translation.
+
+        Must run before the first defined function (the 68000 page functions are
+        declared inside ``build``), which is why ``build`` calls it first.
+        """
+        if self.z80_imported:
+            return
+        for name, params, results in z80_translate.Z80_HELPERS:
+            self.imports[name] = self.module.import_func(
+                "env", self.helper_prefix + name, list(params), list(results)
+            )
+        self.z80_imported = True
 
     # -- page bodies -------------------------------------------------------
     def page_function(self, page: int) -> Func:
@@ -388,15 +405,30 @@ class ModuleBuilder:
 
     def build(self, handlers_by_page: Dict[int, Dict[int, object]],
               variants: Optional[Dict[int, list]] = None,
-              z80_stub: bool = False) -> Tuple[bytes, dict]:
+              z80_stub: bool = False,
+              z80_program=None) -> Tuple[bytes, dict]:
         started = time.perf_counter()
         self.variants = variants or {}
+        if z80_program is not None:
+            # Real Z80 translation: declare its helper imports before any
+            # function is defined (imports must precede the function section).
+            self.import_z80_helpers()
         for page in sorted(handlers_by_page):
             self.emit_page(page, handlers_by_page[page])
         step, warmup, via = self.emit_extras()
-        z80 = self.emit_z80_stub() if z80_stub else None
-        self.module.define_table(1, 1)
-        self.module.element_funcs([step.index])
+        z80 = None
+        z80_meta = None
+        if z80_program is not None:
+            z80, z80_fail_codes = z80_translate.emit_z80(self, z80_program)
+            self.fail_codes_used |= z80_fail_codes
+            z80_meta = z80_translate.z80_program_summary(z80_program)
+        elif z80_stub:
+            z80 = self.emit_z80_stub()
+        # Table slot 0 = 68000 dispatcher, slot 1 = Z80 dispatcher (2-slot
+        # single-dispatcher mode consumed by dune_rt_set_game_table(ptr, 2)).
+        entries = [step.index] + ([z80.index] if z80 is not None else [])
+        self.module.define_table(len(entries), len(entries))
+        self.module.element_funcs(entries)
         self.module.export_func("translated_step", step.index)
         self.module.export_func("translated_step_via_table", via.index)
         self.module.export_func("warmup_all", warmup.index)
@@ -421,15 +453,22 @@ class ModuleBuilder:
         }
         if z80 is not None:
             functions["translated_z80_step"] = z80.index
-        return data, {
+            functions["z80_group_functions"] = sum(
+                1 for func in self.module._funcs
+                if func.results == [I32] and func is not step
+            )
+        meta = {
             "generation_ms": round(elapsed, 3),
             "functions": functions,
-            "imports": [self.helper_prefix + name for name, _, _ in abi.HELPERS],
+            "imports": [self.helper_prefix + name for name in self.imports],
             "helper_prefix": self.helper_prefix,
             "fail_code_map": {str(key): value for key, value in sorted(self.fail_code_map.items())},
             "fail_codes_used": used_codes,
             "exports": exports,
         }
+        if z80_meta is not None:
+            meta["z80"] = z80_meta
+        return data, meta
 
 
 def _instruction_meta(inst) -> dict:
@@ -463,6 +502,7 @@ def build_module(program, instructions, abi_desc: abi.CpuAbi,
                  label: str = "", helper_prefix: str = "",
                  fail_code_map: Optional[Dict[int, int]] = None,
                  z80_stub: bool = False,
+                 z80_program=None,
                  instruction_meta: bool = True) -> Tuple[bytes, dict]:
     """Build a module for a set of real decoded instructions.
 
@@ -482,12 +522,14 @@ def build_module(program, instructions, abi_desc: abi.CpuAbi,
         if inst.pc in program.ram_variants:
             variants[inst.pc] = program.ram_variants[inst.pc]
     builder = ModuleBuilder(abi_desc, memory, program.rom, helper_prefix, fail_code_map)
-    data, build_meta = builder.build(handlers, variants, z80_stub=z80_stub)
+    data, build_meta = builder.build(handlers, variants, z80_stub=z80_stub,
+                                     z80_program=z80_program)
     # Skeleton: identical page/dispatch structure but no handler bodies.
     skeleton_builder = ModuleBuilder(abi_desc, memory, program.rom, helper_prefix,
                                      fail_code_map)
     skeleton, _ = skeleton_builder.build(
-        {pg: {} for pg in handlers}, {}, z80_stub=z80_stub
+        {pg: {} for pg in handlers}, {},
+        z80_stub=z80_stub and z80_program is None,
     )
     page_counts: Dict[str, int] = {}
     for inst in selected:

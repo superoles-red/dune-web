@@ -2,18 +2,18 @@
   "format": 1,
   "kind": "dune-runtime-wasm",
   "generated_by": "tools/wasm_runtime/build_runtime.py",
-  "generated_at_utc": "2026-11-27T05:51:03Z",
+  "generated_at_utc": "2026-11-27T07:08:27Z",
   "game": "Dune — The Battle for Arrakis (USA)",
   "runtime_version": 2,
   "wasm": {
     "file": "runtime.wasm",
-    "sha256": "205ac655ff189efeff4da5068add92e4523b888c5df37f1466e4ddacdd965b66",
-    "bytes": 894968,
+    "sha256": "94b5f8a4d84d2358d1c06a2807e9de4a9f3c823b110d3f338a6e6bb56d4d3c68",
+    "bytes": 898726,
     "deterministic": true,
     "determinism": {
       "deterministic": true,
-      "first_sha256": "205ac655ff189efeff4da5068add92e4523b888c5df37f1466e4ddacdd965b66",
-      "second_sha256": "205ac655ff189efeff4da5068add92e4523b888c5df37f1466e4ddacdd965b66",
+      "first_sha256": "94b5f8a4d84d2358d1c06a2807e9de4a9f3c823b110d3f338a6e6bb56d4d3c68",
+      "second_sha256": "94b5f8a4d84d2358d1c06a2807e9de4a9f3c823b110d3f338a6e6bb56d4d3c68",
       "note": "Two consecutive wasm-ld links from identical objects."
     }
   },
@@ -25,7 +25,7 @@
   },
   "loader": {
     "file": "loader.mjs",
-    "sha256": "e55a5014d7802267b3452273f092805f23b509ff2e53cbeb2a97083c61e39296"
+    "sha256": "aab2023165625cf7051d250bcc86106113274f4975267b59bc29473c6697ec30"
   },
   "emcc": {
     "version": "3.1.74",
@@ -55,7 +55,12 @@
       "-sMAXIMUM_MEMORY=536870912",
       "-sALLOW_MEMORY_GROWTH=1",
       "-sALLOW_TABLE_GROWTH=1",
-      "-sSTACK_SIZE=16777216"
+      "-sSTACK_SIZE=16777216",
+      "-Wl,--wrap=SDL_GetWindowSize",
+      "-Wl,--wrap=SDL_GetWindowSizeInPixels",
+      "-Wl,--wrap=SDL_GetWindowPosition",
+      "-Wl,--wrap=SDL_GetRendererOutputSize",
+      "-Wl,--wrap=SDL_SetWindowSize"
     ],
     "stub_game": {
       "compile": [
@@ -96,15 +101,16 @@
     "adapters_count": 20,
     "abi_layout_sha256": "0dc35bbb165f2fb38a491cd557895c6fb079a5fb88a29a3fcadf222357aad1d5",
     "abi_fill_sha256": "a576a0cd764c6034c4cdf1e667f1bb92d1ff421f996aba61ab7f149b786d9956",
-    "loader_template_sha256": "9b48b0b366b527c45473ad8f7729e4cafc2b4149bb50f59bab1fafa6eec3279f",
+    "loader_template_sha256": "475e17419105ba7e22ecc61e1871532cf53b6235032dda05bc5bccdf0410edff",
     "stub_game_source_sha256": "00df926f2fb4fa70f0092fb4542624e09b8ea66a8dccfd91ebd9d8465c9e29e5",
+    "virtual_window_inc_sha256": "5834707719bdc53919ecb472e3c62839467b74bc4a6e01d84f82a31cce1e9424",
     "abi_spec_sha256": "7424a1faf939a33c72ba77eb9c03978fdf5002e3442cfa6282908ce14d24b159"
   },
   "data_check": {
     "rom_embedded": false,
     "rom_buffer": "allocated by dune_rt_init() via malloc",
     "rom_capacity": 1048576,
-    "wasm_data_segment_bytes": 104150,
+    "wasm_data_segment_bytes": 104165,
     "wasm_data_segments": 120,
     "wasm_largest_data_segment_bytes": 39841,
     "memory_section": false,
@@ -462,6 +468,15 @@
       "dune_push32",
       "dune_read_mem",
       "dune_rom_ptr",
+      "dune_rt_audio_available",
+      "dune_rt_audio_frames",
+      "dune_rt_audio_mode",
+      "dune_rt_audio_peak",
+      "dune_rt_audio_pop",
+      "dune_rt_audio_rate",
+      "dune_rt_audio_reset",
+      "dune_rt_audio_reset_peak",
+      "dune_rt_audio_ring_frames",
       "dune_rt_clear_game_table",
       "dune_rt_fail_reason",
       "dune_rt_game_mode",
@@ -474,14 +489,23 @@
       "dune_rt_rom_buffer",
       "dune_rt_rom_capacity",
       "dune_rt_save_buffer_capacity",
+      "dune_rt_set_audio_mode",
       "dune_rt_set_game_table",
       "dune_rt_set_window",
       "dune_rt_set_z80_step",
       "dune_rt_translated_step",
       "dune_rt_translated_z80_step",
+      "dune_rt_web_step",
       "dune_set_game_steps",
       "dune_set_sr",
       "dune_shift_value",
+      "dune_web_attach_virtual_window",
+      "dune_web_expanded_frame_height",
+      "dune_web_expanded_frame_rgba",
+      "dune_web_expanded_frame_width",
+      "dune_web_virtual_window_attached",
+      "dune_web_virtual_window_height",
+      "dune_web_virtual_window_width",
       "dune_write_mem",
       "dune_z80_add_hl",
       "dune_z80_add_pair",
@@ -579,6 +603,15 @@
       "dune_push32",
       "dune_read_mem",
       "dune_rom_ptr",
+      "dune_rt_audio_available",
+      "dune_rt_audio_frames",
+      "dune_rt_audio_mode",
+      "dune_rt_audio_peak",
+      "dune_rt_audio_pop",
+      "dune_rt_audio_rate",
+      "dune_rt_audio_reset",
+      "dune_rt_audio_reset_peak",
+      "dune_rt_audio_ring_frames",
       "dune_rt_clear_game_table",
       "dune_rt_fail_reason",
       "dune_rt_game_mode",
@@ -591,11 +624,13 @@
       "dune_rt_rom_buffer",
       "dune_rt_rom_capacity",
       "dune_rt_save_buffer_capacity",
+      "dune_rt_set_audio_mode",
       "dune_rt_set_game_table",
       "dune_rt_set_window",
       "dune_rt_set_z80_step",
       "dune_rt_translated_step",
       "dune_rt_translated_z80_step",
+      "dune_rt_web_step",
       "dune_save_state_to_buffer",
       "dune_set_game_steps",
       "dune_set_sr",
@@ -604,6 +639,7 @@
       "dune_web_action_self",
       "dune_web_actions_debug",
       "dune_web_actor_capture",
+      "dune_web_attach_virtual_window",
       "dune_web_audio_levels",
       "dune_web_audio_worklet",
       "dune_web_begin",
@@ -621,6 +657,9 @@
       "dune_web_command_world",
       "dune_web_debug",
       "dune_web_end",
+      "dune_web_expanded_frame_height",
+      "dune_web_expanded_frame_rgba",
+      "dune_web_expanded_frame_width",
       "dune_web_frame_height",
       "dune_web_frame_rgb",
       "dune_web_frame_serial",
@@ -668,6 +707,9 @@
       "dune_web_training_json",
       "dune_web_transition_covered",
       "dune_web_ui_sound",
+      "dune_web_virtual_window_attached",
+      "dune_web_virtual_window_height",
+      "dune_web_virtual_window_width",
       "dune_web_world_x",
       "dune_web_world_y",
       "dune_web_zoom",
@@ -1322,17 +1364,17 @@
       "SERIAL_NOT_IMPLEMENTED": 12,
       "VDP_ACCESS": 13,
       "Z80_PERIPHERAL": 14,
-      "ADDR_CPU": 380056,
-      "ADDR_RAM": 380134,
-      "ADDR_Z80_RAM": 741936,
-      "ADDR_ROM": 19205400,
-      "ADDR_SAVE_BUFFER": 117904,
-      "ADDR_VDP_VRAM": 445720,
-      "ADDR_VDP_CRAM": 511256,
-      "ADDR_VDP_VSRAM": 511384,
-      "ADDR_VDP_FRAME": 511520,
-      "ADDR_GAME_TABLE": 789856,
-      "ADDR_ABI": 789280
+      "ADDR_CPU": 380072,
+      "ADDR_RAM": 380150,
+      "ADDR_Z80_RAM": 741952,
+      "ADDR_ROM": 19205432,
+      "ADDR_SAVE_BUFFER": 117920,
+      "ADDR_VDP_VRAM": 445736,
+      "ADDR_VDP_CRAM": 511272,
+      "ADDR_VDP_VSRAM": 511400,
+      "ADDR_VDP_FRAME": 511536,
+      "ADDR_GAME_TABLE": 789872,
+      "ADDR_ABI": 789296
     },
     "abi_hash": "fb47e1386ee5c802a2cb2a58b98ec29367db79e00c7f32b355020abbc4be1db5",
     "hash_verified": true
@@ -1358,7 +1400,7 @@
         "emcc",
         "--version"
       ],
-      "seconds": 0.22,
+      "seconds": 0.28,
       "returncode": 0
     },
     {
@@ -1381,7 +1423,7 @@
         "-o",
         "<build>/obj/runtime.o"
       ],
-      "seconds": 1.99,
+      "seconds": 1.62,
       "returncode": 0
     },
     {
@@ -1396,7 +1438,7 @@
         "-o",
         "<build>/obj/audio.o"
       ],
-      "seconds": 0.98,
+      "seconds": 1.13,
       "returncode": 0
     },
     {
@@ -1413,12 +1455,17 @@
         "-sALLOW_MEMORY_GROWTH=1",
         "-sALLOW_TABLE_GROWTH=1",
         "-sSTACK_SIZE=16777216",
+        "-Wl,--wrap=SDL_GetWindowSize",
+        "-Wl,--wrap=SDL_GetWindowSizeInPixels",
+        "-Wl,--wrap=SDL_GetWindowPosition",
+        "-Wl,--wrap=SDL_GetRendererOutputSize",
+        "-Wl,--wrap=SDL_SetWindowSize",
         "<build>/obj/runtime.o",
         "<build>/obj/audio.o",
         "-o",
         "<build>/runtime.wasm"
       ],
-      "seconds": 1.09,
+      "seconds": 1.11,
       "returncode": 0
     },
     {
@@ -1461,7 +1508,7 @@
         "<build>/stub_game.wasm",
         "<build>/obj/stub_game.o"
       ],
-      "seconds": 0.17,
+      "seconds": 0.15,
       "returncode": 0
     },
     {
@@ -1471,7 +1518,7 @@
         "<build>/dump_abi.mjs",
         "<build>/runtime.wasm"
       ],
-      "seconds": 0.22,
+      "seconds": 0.18,
       "returncode": 0
     },
     {
@@ -1488,12 +1535,17 @@
         "-sALLOW_MEMORY_GROWTH=1",
         "-sALLOW_TABLE_GROWTH=1",
         "-sSTACK_SIZE=16777216",
+        "-Wl,--wrap=SDL_GetWindowSize",
+        "-Wl,--wrap=SDL_GetWindowSizeInPixels",
+        "-Wl,--wrap=SDL_GetWindowPosition",
+        "-Wl,--wrap=SDL_GetRendererOutputSize",
+        "-Wl,--wrap=SDL_SetWindowSize",
         "<build>/obj/runtime.o",
         "<build>/obj/audio.o",
         "-o",
         "<build>/runtime.determinism-2.wasm"
       ],
-      "seconds": 1.14,
+      "seconds": 1.13,
       "returncode": 0
     }
   ],

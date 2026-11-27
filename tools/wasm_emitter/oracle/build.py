@@ -70,7 +70,7 @@ def find_clang() -> str:
 
 
 def build_oracle(root: Path, baseline: Path, out_dir: Path,
-                 force: bool = False) -> Path:
+                 force: bool = False, include_dirs=()) -> Path:
     root = Path(root).resolve()
     baseline = Path(baseline).resolve()
     out_dir = Path(out_dir).resolve()
@@ -100,11 +100,10 @@ def build_oracle(root: Path, baseline: Path, out_dir: Path,
         "-O0",
         "-w",
         "-DDUNE_FAIL_MAP=%s" % json.dumps(str(fail_map)),
-        str(wrapper),
-        "-o",
-        str(binary),
-        "-lm",
     ]
+    for include_dir in include_dirs:
+        command += ["-I", str(include_dir)]
+    command += [str(wrapper), "-o", str(binary), "-lm"]
     process = subprocess.run(command, capture_output=True, text=True)
     if process.returncode != 0:
         raise OracleBuildError(

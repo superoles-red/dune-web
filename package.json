@@ -11,7 +11,10 @@
     "bundle": "/usr/bin/python3 tools/bundle_web.py",
     "smoke": "node tests/browser/smoke.mjs",
     "play": "node tests/browser/play.mjs",
-    "test:browser": "node tests/browser/ux.mjs"
+    "test:browser": "node tests/browser/ux.mjs",
+    "test:input": "node --test 'tests/input/*.test.mjs'",
+    "test:z80": "python3 -m unittest discover -s tests/wasm_z80",
+    "test:audio": "node --test tests/host/audio.test.mjs"
   },
   "dependencies": {
     "pyodide": "0.28.3"

@@ -698,7 +698,8 @@ def game_import_names(helper_prefix: str) -> List[str]:
 
 def verify_game_module(info, runtime_export_names: Iterable[str],
                        helper_prefix: str = "dune_",
-                       expected_exports: Optional[Sequence[str]] = None) -> dict:
+                       expected_exports: Optional[Sequence[str]] = None,
+                       extra_helpers: Sequence[str] = ()) -> dict:
     """Check that a generated module is the runtime's expected game side.
 
     * imports are exactly ``env.memory`` + the 16 runtime helper functions, and
@@ -711,7 +712,9 @@ def verify_game_module(info, runtime_export_names: Iterable[str],
     """
     problems: List[str] = []
     exports_available = set(runtime_export_names)
-    expected_helpers = game_import_names(helper_prefix)
+    expected_helpers = game_import_names(helper_prefix) + [
+        helper_prefix + name for name in extra_helpers
+    ]
     imports = list(info.imports)
     memory_imports = [entry for entry in imports if entry.kind == "memory"]
     function_imports = [entry for entry in imports if entry.kind == "function"]
