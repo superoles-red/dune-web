@@ -56,6 +56,9 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
 - **Перенесён ввод старой версии:** gestures/pan-inertia/map-input/order-input/placement —
   [docs/INPUT-PORT.md](docs/INPUT-PORT.md); анализ всей старой версии —
   [docs/PORTING-FROM-OLD.md](docs/PORTING-FROM-OLD.md).
+- **Портрет и ландшафт как в старой версии:** карта перестраивается под экран (высокий/широкий
+  обзор), тач-камера работает в обеих ориентациях; «Продолжить» возобновляет сохранённую миссию,
+  автосейв каждые 20 с и при сворачивании.
 - **Пока нет:** HUD-кнопок контекстных действий и HTML-меню зданий, RU/EN-оболочки, справки,
   установки/PWA и полной проверки кампании на устройствах.
 
