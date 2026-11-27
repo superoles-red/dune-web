@@ -48,8 +48,11 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
   save API, диспетчеризация) — [docs/WASM-RUNTIME.md](docs/WASM-RUNTIME.md); эмиттер реальных
   страниц сверен с C-оракулом на 21 360 состояниях, 0 расхождений —
   [docs/WASM-EMITTER.md](docs/WASM-EMITTER.md).
-- **Не готово:** связка полного `game.wasm` (все страницы + Z80) с рантаймом, браузерный
-  воркер на WASM-пути и игровая оболочка-рендер.
+- **Интеграция модулей доказана:** сгенерированный `game.wasm` страницы `$013` исполняется
+  внутри `runtime.wasm` через его ABI-дескриптор — 15 600 случаев против C-оракула, 0
+  расхождений ([docs/WASM-INTEGRATION.md](docs/WASM-INTEGRATION.md)).
+- **Не готово:** полный `game.wasm` (все 48 страниц + Z80), браузерный воркер на WASM-пути
+  и игровая оболочка-рендер.
 
 ## Как запустить локально
 
