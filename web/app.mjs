@@ -33,7 +33,7 @@ const PHASE_SPAN = {
   hash_output: [0.97, 0.99], cache: [0.99, 1.0], cache_read: [0.0, 1.0],
 };
 
-const state = { romBytes: null, romSha: null, worker: null, building: false, result: null };
+const state = { romBytes: null, romSha: null, worker: null, building: false, result: null, reference: null };
 
 function log(line) {
   const stamp = new Date().toLocaleTimeString('ru-RU');
@@ -42,6 +42,34 @@ function log(line) {
 }
 
 function setStatus(text) { statusEl.textContent = text; }
+
+async function loadBuildInfo() {
+  try {
+    const response = await fetch('./reference.json', { cache: 'no-store' });
+    if (!response.ok) return;
+    state.reference = await response.json();
+    const short = (value) => (value ? value.slice(0, 16) + '…' : '—');
+    $('build-info').textContent =
+      `Версия сборки: runtime ${short(state.reference.runtime_sha256)} · ` +
+      `core ${short(state.reference.expected_output_sha256)} · ` +
+      `recompiler ${state.reference.recompiler || '—'}`;
+  } catch {
+    // The bundle metadata is optional for the saves panel; ignore failures.
+  }
+}
+
+async function clearCache() {
+  if (!state.romSha) return;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const rootDir = await root.getDirectoryHandle('dune-web', { create: false });
+    await rootDir.removeEntry(`rom-${state.romSha}`, { recursive: true });
+    setStatus('Собранное ядро удалено из кэша. Следующая сборка начнётся заново.');
+    log(`Кэш для ROM ${state.romSha.slice(0, 16)}… удалён`);
+  } catch (error) {
+    setStatus(`Не удалось очистить кэш: ${error.message}`);
+  }
+}
 
 function row(table, label, value, className) {
   const tr = document.createElement('tr');
@@ -183,6 +211,8 @@ function onBuildError(message) {
 }
 
 buildButton.addEventListener('click', build);
+$('clear-cache').addEventListener('click', clearCache);
+loadBuildInfo();
 
 // --- Saves: old port (<dune-sega-web>) file import/export -------------------
 async function initSaves() {
