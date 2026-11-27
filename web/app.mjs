@@ -13,6 +13,7 @@ const dumpBody = document.querySelector('#dump-table tbody');
 const resultCard = $('result-card');
 const resultBody = document.querySelector('#result-table tbody');
 const logEl = $('log');
+const logLines = [];
 
 const KNOWN_ROM_SHA256 = 'b1bbe73186e0902fa8b2db0f227bf306e3d6a80fe592f927d1aa9d60c0f335ba';
 const PHASE_LABELS = {
@@ -37,8 +38,36 @@ const state = { romBytes: null, romSha: null, worker: null, building: false, res
 
 function log(line) {
   const stamp = new Date().toLocaleTimeString('ru-RU');
+  logLines.push(`[${stamp}] ${line}`);
   logEl.textContent = `[${stamp}] ${line}\n` + logEl.textContent;
   if (logEl.textContent.length > 60000) logEl.textContent = logEl.textContent.slice(0, 60000);
+}
+
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function saveLog() {
+  const report = {
+    generatedAt: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+    platform: navigator.platform || '',
+    deviceMemory: navigator.deviceMemory ?? null,
+    hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+    crossOriginIsolated: self.crossOriginIsolated,
+    reference: state.reference,
+    romSha256: state.romSha,
+    results: window.__BUILD_RESULTS ?? [],
+    errors: window.__BUILD_ERRORS ?? [],
+    lines: logLines,
+  };
+  downloadText('dune-byop-report.json', JSON.stringify(report, null, 2) + '\n');
 }
 
 function setStatus(text) { statusEl.textContent = text; }
@@ -212,7 +241,9 @@ function onBuildError(message) {
 
 buildButton.addEventListener('click', build);
 $('clear-cache').addEventListener('click', clearCache);
+$('download-log').addEventListener('click', saveLog);
 loadBuildInfo();
+log(`Платформа: ${navigator.userAgent}`);
 
 // --- Saves: old port (<dune-sega-web>) file import/export -------------------
 async function initSaves() {
