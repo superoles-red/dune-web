@@ -1,7 +1,19 @@
 // Dune — BYOP shell: three screens (choose ROM → build → ready), saves sheet,
 // and a collapsed "details" block for diagnostics. Built for phones first.
 
+import { initLanguage, setLanguage, nextLanguage, languageLabel, t, translateDom } from './i18n.mjs';
+
 const $ = (id) => document.getElementById(id);
+
+initLanguage();
+const langToggle = $('lang-toggle');
+if (langToggle) {
+  langToggle.textContent = languageLabel();
+  langToggle.addEventListener('click', () => {
+    setLanguage(nextLanguage());
+    location.reload();
+  });
+}
 const romInput = $('rom-input');
 const dropZone = $('drop');
 const ringValue = $('ring-value');
@@ -191,8 +203,8 @@ function onResult(result) {
   $('detail-core').textContent = `${short(result.output_sha256)} · ${bytesLabel(result.output_bytes)}${result.cached ? ' · из кэша' : ''}`;
   $('detail-time').textContent = result.cached ? 'из памяти устройства' : fmtSeconds(result.total_seconds);
   log(`Готово: ${result.output_sha256} (${result.output_bytes} Б)${result.cached ? ' [кэш]' : ''}`);
-  $('ready-title').textContent = result.cached ? 'Игра уже собрана' : 'Игра собрана';
-  $('ready-hint').textContent = 'Нажмите «Играть» — запустится оригинальная игра с вашего ROM.';
+  $('ready-title').textContent = t(result.cached ? 'Игра уже собрана' : 'Игра собрана');
+  $('ready-hint').textContent = t('Нажмите «Играть» — запустится оригинальная игра с вашего ROM.');
   const play = $('play');
   play.disabled = false;
   screen('ready');
@@ -258,7 +270,7 @@ function scheduleGameViewportSync() {
 
 function gameLoading(visible, text) {
   $('game-loading').classList.toggle('hidden', !visible);
-  $('game-loading-text').textContent = text || 'Запускаем игру…';
+  $('game-loading-text').textContent = t(text || 'Запускаем игру…');
 }
 
 async function startPlay({ resume = false } = {}) {
@@ -358,11 +370,11 @@ async function startPlay({ resume = false } = {}) {
     try { await navigator.wakeLock?.request?.('screen'); } catch { /* optional */ }
   } catch (error) {
     state.host = null;
-    gameLoading(true, 'Не удалось запустить игру');
+    gameLoading(true, t('Не удалось запустить игру'));
     log(`Ошибка запуска: ${error && error.stack ? error.stack : error}`);
     setTimeout(() => {
       screen('ready');
-      $('ready-hint').textContent = 'Запуск не удался на этом устройстве — подробности в «Подробностях».';
+      $('ready-hint').textContent = t('Запуск не удался на этом устройстве — подробности в «Подробностях».');
     }, 1500);
   }
 }
@@ -459,7 +471,7 @@ function base64ToBytes(value) {
 }
 
 function setGameStatus(text) {
-  $('game-sheet-status').textContent = text;
+  $('game-sheet-status').textContent = t(text);
 }
 
 function openGameMenu() {
@@ -522,7 +534,7 @@ function updateContinueButtons() {
   if (!play) return;
   if (saved) {
     play.disabled = false;
-    play.childNodes[play.childNodes.length - 1].textContent = ' Продолжить';
+    play.childNodes[play.childNodes.length - 1].textContent = ` ${t('Продолжить')}`;
     $('new-game').classList.remove('hidden');
   } else {
     $('new-game').classList.add('hidden');
@@ -623,7 +635,7 @@ function updateHud(snapshot) {
   b.textContent = bLabel || 'ACTION';
   b.title = bLabel ? `Оригинальное действие B: ${bLabel}` : '';
   clear.hidden = !(placing || hasSelection);
-  clear.title = placing ? 'Отменить размещение' : 'Снять выбор';
+  clear.title = t(placing ? 'Отменить размещение' : 'Снять выбор');
 }
 
 function hudAction(kind) {
@@ -642,7 +654,7 @@ function updateSoundButton() {
   const audio = state.host?.audio;
   const button = $('game-sound');
   if (!button) return;
-  button.textContent = audio?.enabled ? 'Звук: вкл' : 'Звук: выкл';
+  button.textContent = t(audio?.enabled ? 'Звук: вкл' : 'Звук: выкл');
   button.disabled = !audio?.supported;
 }
 
@@ -737,6 +749,19 @@ $('download-log').addEventListener('click', downloadReport);
 let savesModule = null;
 let campaignStore = null;
 
+function openHelp() {
+  $('help-sheet').classList.remove('hidden');
+}
+
+function initHelp() {
+  $('help-open')?.addEventListener('click', openHelp);
+  $('game-help')?.addEventListener('click', openHelp);
+  $('help-close')?.addEventListener('click', () => $('help-sheet').classList.add('hidden'));
+  $('help-sheet')?.addEventListener('click', (event) => {
+    if (event.target === $('help-sheet')) $('help-sheet').classList.add('hidden');
+  });
+}
+
 async function initSaves() {
   const fileInput = $('save-file');
   $('open-saves').addEventListener('click', () => $('saves-sheet').classList.remove('hidden'));
@@ -752,14 +777,14 @@ async function initSaves() {
 
     const describe = (progress, current) => {
       const houses = ['HARKONNEN', 'ATREIDES', 'ORDOS'];
-      if (current) return `${houses[current.house]} · миссия ${current.mission}`;
+      if (current) return `${houses[current.house]} · ${t('миссия')} ${current.mission}`;
       const played = progress.houses.reduce((acc, h) => acc + h.completed.length, 0);
-      return played ? `прогресс: ${played} миссий` : 'сохранений пока нет';
+      return played ? `${t('прогресс')}: ${played} ${t('миссий')}` : t('сохранений пока нет');
     };
     const refresh = () => {
       $('saves-status').textContent = campaignStore.current
-        ? `В браузере: ${describe(campaignStore.progress, campaignStore.current)}`
-        : 'Здесь можно перенести сохранение из старой версии.';
+        ? `${t('В браузере')}: ${describe(campaignStore.progress, campaignStore.current)}`
+        : t('Здесь можно перенести сохранение из старой версии.');
       $('save-download').disabled = !campaignStore.current;
     updateContinueButtons();
     };
@@ -773,12 +798,12 @@ async function initSaves() {
         const archive = await savesModule.parseSaveFile(await file.text());
         const transaction = savesModule.commitSaveFile({ store: campaignStore, archive });
         refresh();
-        $('saves-status').textContent = `Загружено: ${describe(transaction.progress, transaction.continue)}`;
+        $('saves-status').textContent = `${t('Загружено')}: ${describe(transaction.progress, transaction.continue)}`;
         log(`Сейв импортирован из ${file.name}`);
       } catch (error) {
-        $('saves-status').textContent = error.code === 'incompatible-engine'
+        $('saves-status').textContent = t(error.code === 'incompatible-engine'
           ? 'Файл от другой сборки игры.'
-          : 'Файл повреждён или не подходит.';
+          : 'Файл повреждён или не подходит.');
         log(`Ошибка импорта сейва: ${error.code || error.message}`);
       } finally {
         fileInput.value = '';
@@ -788,13 +813,13 @@ async function initSaves() {
       try {
         const save = await savesModule.createSaveFile({ store: campaignStore, language: 'ru' });
         await files.downloadSave(save);
-        $('saves-status').textContent = 'Файл сохранения скачан.';
+        $('saves-status').textContent = t('Файл сохранения скачан.');
       } catch (error) {
-        $('saves-status').textContent = 'Не удалось скачать сохранение.';
+        $('saves-status').textContent = t('Не удалось скачать сохранение.');
       }
     });
   } catch (error) {
-    $('saves-status').textContent = 'Сохранения пока недоступны.';
+    $('saves-status').textContent = t('Сохранения пока недоступны.');
     log(`Saves module unavailable: ${error.message}`);
   }
 }
@@ -837,5 +862,8 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localho
     registration.update?.().catch(() => {});
   }).catch((error) => log(`Офлайн-режим недоступен: ${error.message}`));
 }
+
+translateDom();
+initHelp();
 
 window.__SPIKE_READY__ = true;

@@ -4,11 +4,12 @@
  * distribution. The player's ROM is never requested by the SW; the generated
  * game.wasm lives in OPFS (web/recompiler.worker.js) and is reused offline.
  */
-const VERSION = 'dune-byop-v1';
+const VERSION = 'dune-byop-v2';
 const CORE = [
   './',
   './index.html',
   './app.mjs',
+  './i18n.mjs',
   './input/index.mjs',
   './input/gestures.mjs',
   './input/map-input.mjs',

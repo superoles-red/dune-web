@@ -156,6 +156,11 @@
   @media (orientation: portrait) { .game-controls { padding: 0 10px; } }
   @media (orientation: landscape) { .game-controls { padding: 0 24px; } }
 
+  .lang { margin-left: auto; border: 1px solid #4a3820; background: rgba(30,22,12,.8); color: #e8d8b8;
+          border-radius: 10px; padding: 4px 10px; font: 700 12px/1 inherit; letter-spacing: .08em; }
+  .lang:active { background: rgba(240,200,112,.3); }
+  .help h3 { margin: 14px 0 4px; font-size: 13px; color: #caa54a; letter-spacing: .06em; text-transform: uppercase; }
+  .help p { margin: 0 0 8px; font-size: 14px; line-height: 1.45; color: #e6d7bb; }
   footer { color: #6d5c43; font-size: 11px; text-align: center; padding: 6px 0 0; }
   footer a { color: #8a765a; }
 
@@ -167,6 +172,7 @@
   <header>
     <div class="logo">Dune</div>
     <div class="chip" id="stage-chip">BYOP · бета</div>
+    <button class="lang" id="lang-toggle" title="Switch language" aria-label="Switch language">EN</button>
   </header>
 
   <!-- 1. Choose ROM -->
@@ -180,6 +186,7 @@
       <input id="rom-input" type="file" accept=".gen,.bin,.md,application/octet-stream" hidden>
     </label>
     <p class="hint" id="setup-note" style="font-size:13px"></p>
+    <button class="btn ghost small" id="help-open" style="width:100%">Как играть</button>
   </section>
 
   <!-- 2. Building -->
@@ -271,6 +278,7 @@
       <button class="btn ghost" id="game-sound">Звук: выкл</button>
       <button class="btn ghost" id="game-fullscreen">На весь экран</button>
       <button class="btn ghost" id="game-exit">Выйти из игры</button>
+      <button class="btn ghost" id="game-help">Справка</button>
       <button class="btn ghost small" id="game-sheet-close">Продолжить</button>
     </div>
   </div>
@@ -290,6 +298,21 @@
 
   <footer>Игра не поставляется: ROM приносит игрок. <a href="https://github.com/superoles-red/dune-web" target="_blank" rel="noopener">Исходники</a></footer>
 </main>
+
+<!-- Help sheet -->
+<div class="sheet hidden" id="help-sheet" role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="inner help">
+    <h2 id="help-title">Как играть</h2>
+    <h3>Что нужно</h3>
+    <p>Свой ROM Dune — The Battle for Arrakis (Sega Genesis, USA). Это дамп 1 МиБ; никуда не загружается и не входит в сборку — игра собирается на вашем устройстве.</p>
+    <h3>Управление</h3>
+    <p>Меню и вступление: кнопки A / START и стрелки (или D-pad на экране).</p>
+    <p>Карта: тап — выбрать, двойной тап — приказ, перетаскивание — прокрутка карты, щипок — масштаб.</p>
+    <p>Свой завод: коснитесь ещё раз (двойной тап) — откроется оригинальное меню здания.</p>
+    <p>Кнопка ☰ — пауза, сохранение, звук, полный экран. Игра сама сохраняется каждые 20 секунд.</p>
+    <button class="btn" id="help-close">Понятно</button>
+  </div>
+</div>
 
 <!-- Saves sheet -->
 <div class="sheet hidden" id="saves-sheet" role="dialog" aria-modal="true" aria-labelledby="saves-title">

@@ -38,7 +38,7 @@ for (let attempt = 0; attempt < 150; attempt += 1) {
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
 try {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'ru-RU' });
   const page = await context.newPage();
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message.slice(0, 200)}`));
   page.on('console', (message) => { if (message.type() === 'error') problems.push(`console: ${message.text().slice(0, 200)}`); });
