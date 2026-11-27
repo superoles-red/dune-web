@@ -219,12 +219,46 @@ async function readCachedGame() {
   return new Uint8Array(await file.arrayBuffer());
 }
 
+function gameVirtualWindow() {
+  const stage = document.querySelector('.game-stage');
+  const width = stage?.clientWidth || window.innerWidth;
+  const height = stage?.clientHeight || window.innerHeight;
+  if (!(width > 0) || !(height > 0)) return null;
+  // Same framing as the old port: portrait grows the world vertically, landscape
+  // grows it horizontally; the native 320x224 screens stay intact elsewhere.
+  if (height >= width) return { width: 320, height: Math.round((320 * height) / width) };
+  return { width: Math.round((224 * width) / height), height: 224 };
+}
+
+let viewportFrame = 0;
+function syncGameViewport() {
+  if (!state.host) return;
+  const virtual = gameVirtualWindow();
+  if (!virtual) return;
+  state.host.attachVirtualWindow?.(virtual);
+  state.input?.setVirtualWindow?.(virtual.width, virtual.height);
+  state.host.refreshPresentation?.();
+  log(`Окно игры: ${virtual.width}x${virtual.height}`);
+}
+
+// A resize event reports the *previous* layout; wait two animation frames so
+// the stage has its final size before the virtual window is recomputed.
+function scheduleGameViewportSync() {
+  if (viewportFrame) cancelAnimationFrame(viewportFrame);
+  viewportFrame = requestAnimationFrame(() => {
+    viewportFrame = requestAnimationFrame(() => {
+      viewportFrame = 0;
+      syncGameViewport();
+    });
+  });
+}
+
 function gameLoading(visible, text) {
   $('game-loading').classList.toggle('hidden', !visible);
   $('game-loading-text').textContent = text || 'Запускаем игру…';
 }
 
-async function startPlay() {
+async function startPlay({ resume = false } = {}) {
   if (state.host || !state.romBytes) return;
   screen('game');
   gameLoading(true, 'Запускаем игру…');
@@ -240,15 +274,29 @@ async function startPlay() {
     await host.init({ gameBytes });
     await host.loadRomFromBytes(state.romBytes);
     host.boot();
-    // Fast-forward the SEGA/Virgin title sequence and open the main menu, so the
-    // player lands on something interactive within a second instead of waiting
-    // through the 40-second intro at real time.
-    try {
-      host.advanceInstructions(26_000_000, { maxSteps: 300_000_000 });
-      host.pressStart({ holdSteps: 200_000, settleSteps: 100_000 });
-      host.drawFrame?.();
-    } catch (error) {
-      log(`fast-forward skipped: ${error.message}`);
+    const saved = resume ? campaignStore?.resumable?.() : null;
+    if (saved?.state) {
+      // Continue exactly where the player stopped: the native save carries the
+      // whole machine state, so no intro fast-forward is needed.
+      try {
+        if (!host.loadState(base64ToBytes(saved.state))) throw new Error('load rejected');
+        host.drawFrame?.();
+        log('Продолжаем сохранённую миссию');
+      } catch (error) {
+        log(`Продолжение недоступно: ${error.message}`);
+      }
+    }
+    if (!saved?.state) {
+      // Fast-forward the SEGA/Virgin title sequence and open the main menu, so the
+      // player lands on something interactive within a second instead of waiting
+      // through the 40-second intro at real time.
+      try {
+        host.advanceInstructions(26_000_000, { maxSteps: 300_000_000 });
+        host.pressStart({ holdSteps: 200_000, settleSteps: 100_000 });
+        host.drawFrame?.();
+      } catch (error) {
+        log(`fast-forward skipped: ${error.message}`);
+      }
     }
     host.start();
     host.setPresentation?.('auto');
@@ -267,6 +315,9 @@ async function startPlay() {
       onStatus: (snapshot) => { window.__DUNE_INPUT = snapshot; },
       onOrder: (order) => log(`input: ${order.type}`),
     });
+    syncGameViewport();
+    window.addEventListener('resize', scheduleGameViewportSync);
+    window.addEventListener('orientationchange', scheduleGameViewportSync);
     gameLoading(false);
     log(`Игра запущена: ${host.metrics?.instructions ?? 0} инструкций, кадры ${host.metrics?.renderedFrames ?? 0}`);
     // Keep the screen awake during play where the API exists.
@@ -293,7 +344,8 @@ function stopPlay() {
   screen('ready');
 }
 
-$('play').addEventListener('click', startPlay);
+$('play').addEventListener('click', () => startPlay({ resume: !!campaignStore?.resumable?.() }));
+$('new-game').addEventListener('click', () => startPlay({ resume: false }));
 $('game-back').addEventListener('click', stopPlay);
 
 // On-screen pad: press on pointerdown, release on pointerup/cancel/leave.
@@ -422,6 +474,19 @@ function loadGame() {
   }
 }
 
+function updateContinueButtons() {
+  const saved = campaignStore?.resumable?.();
+  const play = $('play');
+  if (!play) return;
+  if (saved) {
+    play.disabled = false;
+    play.childNodes[play.childNodes.length - 1].textContent = ' Продолжить';
+    $('new-game').classList.remove('hidden');
+  } else {
+    $('new-game').classList.add('hidden');
+  }
+}
+
 function updateSoundButton() {
   const audio = state.host?.audio;
   const button = $('game-sound');
@@ -454,6 +519,11 @@ $('game-save').addEventListener('click', () => saveGame(true));
 $('game-load').addEventListener('click', loadGame);
 $('game-fullscreen').addEventListener('click', toggleFullscreen);
 $('game-sound').addEventListener('click', toggleSound);
+
+// Save on background/exit, like the old port (best effort, mission only).
+const flushSave = () => { if (state.host && currentRun()) saveGame(false); };
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
+window.addEventListener('pagehide', flushSave);
 
 // Periodic autosave while a mission is actually running.
 setInterval(() => {
@@ -530,6 +600,7 @@ async function initSaves() {
         ? `В браузере: ${describe(campaignStore.progress, campaignStore.current)}`
         : 'Здесь можно перенести сохранение из старой версии.';
       $('save-download').disabled = !campaignStore.current;
+    updateContinueButtons();
     };
     refresh();
 

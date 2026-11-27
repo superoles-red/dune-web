@@ -401,6 +401,10 @@ export class DuneHost {
       if (attached) this.exports.dune_web_resize(width, height);
       const w = this.exports.dune_web_virtual_window_width?.() ?? width;
       const h = this.exports.dune_web_virtual_window_height?.() ?? height;
+      if (this.virtualWindow) {
+        this.virtualWindow.width = w;
+        this.virtualWindow.height = h;
+      }
       this.touch = {
         attached: !!attached,
         width: w,

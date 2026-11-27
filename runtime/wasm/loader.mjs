@@ -165,8 +165,12 @@ function wasiStub(memory, name) {
  */
 export function makeImportObject(module, { memory, overrides = {}, onStub = null, virtualWindow = null } = {}) {
   const importObject = {};
-  const vw = virtualWindow ? Math.max(1, Math.trunc(virtualWindow.width ?? 320)) : 0;
-  const vh = virtualWindow ? Math.max(1, Math.trunc(virtualWindow.height ?? 224)) : 0;
+  // Read the size on every call: the virtual window changes with orientation and
+  // must stay in sync with the C attach (a stale mock broke portrait hit-tests).
+  const virtualCssSize = () => ({
+    width: Math.max(1, Math.trunc(virtualWindow?.width ?? 320)),
+    height: Math.max(1, Math.trunc(virtualWindow?.height ?? 224)),
+  });
   for (const entry of WebAssembly.Module.imports(module)) {
     const group = (importObject[entry.module] ??= {});
     const override = overrides[entry.module]?.[entry.name];
@@ -182,9 +186,10 @@ export function makeImportObject(module, { memory, overrides = {}, onStub = null
            The pinned adapters treat the emscripten result 0 as success and fall
            back to the SDL window size for non-positive CSS sizes. */
         group[entry.name] = (_target, widthPtr, heightPtr) => {
+          const size = virtualCssSize();
           const view = new DataView(memory.buffer);
-          if (widthPtr) view.setFloat64(widthPtr, vw, true);
-          if (heightPtr) view.setFloat64(heightPtr, vh, true);
+          if (widthPtr) view.setFloat64(widthPtr, size.width, true);
+          if (heightPtr) view.setFloat64(heightPtr, size.height, true);
           return 0;
         };
       } else {

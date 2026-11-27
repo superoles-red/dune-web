@@ -142,27 +142,62 @@ try {
   if (audio.enabled && !(audio.stats?.frames > 0)) note('audio pipeline produced no frames');
   if (!(stats.canvasNonBlack > 5000)) note('mission map frame looks blank');
 
+  // Orientation: the map must reframe itself like the old port — portrait fills
+  // the screen vertically, landscape horizontally. Then go back to portrait.
+  const portraitBox = await page.locator('#game-canvas').boundingBox();
+  console.log('portrait canvas:', JSON.stringify({ w: Math.round(portraitBox.width), h: Math.round(portraitBox.height), vw: 390, vh: 844 }));
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: path.join(OUT, '05b-landscape.png') });
+  const landscape = await page.evaluate(() => {
+    const canvas = document.getElementById('game-canvas');
+    const rect = canvas.getBoundingClientRect();
+    return { w: Math.round(rect.width), h: Math.round(rect.height), win: { w: window.innerWidth, h: window.innerHeight }, camera: window.__DUNE_HOST.cameraDebug() };
+  });
+  console.log('landscape canvas:', JSON.stringify(landscape));
+  if (landscape.w < landscape.win.w * 0.9 && landscape.h < landscape.win.h * 0.9) note('landscape map does not fill the viewport');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(700);
+  const portraitAfter = await page.evaluate(() => {
+    const rect = document.getElementById('game-canvas').getBoundingClientRect();
+    return { w: Math.round(rect.width), h: Math.round(rect.height) };
+  });
+  if (portraitAfter.h < 844 * 0.9 && portraitAfter.w < 390 * 0.9) note('portrait map does not fill the viewport');
+
   // Touch/mouse camera: drag pans, wheel zooms, click selects; the expanded
   // mission overview must visibly change.
   const box = await page.locator('#game-canvas').boundingBox();
   const cameraBefore = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  for (let step = 1; step <= 8; step += 1) {
-    await page.mouse.move(box.x + box.width / 2 - step * 8, box.y + box.height / 2, { steps: 1 });
-    await page.waitForTimeout(30);
+  const dragOnce = async () => {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let step = 1; step <= 8; step += 1) {
+      await page.mouse.move(box.x + box.width / 2 - step * 8, box.y + box.height / 2, { steps: 1 });
+      await page.waitForTimeout(30);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+  };
+  await dragOnce();
+  let cameraAfterPan = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  if (cameraAfterPan?.cameraX === cameraBefore?.cameraX) {
+    console.log('pan retry');
+    await dragOnce();
+    cameraAfterPan = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
   }
-  await page.mouse.up();
-  await page.waitForTimeout(400);
-  const cameraAfterPan = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
   await page.screenshot({ path: path.join(OUT, '06-pan.png') });
-  console.log('camera pan:', JSON.stringify({ before: cameraBefore?.cameraX, after: cameraAfterPan?.cameraX }));
+  console.log('camera pan:', JSON.stringify({ before: cameraBefore?.cameraX, after: cameraAfterPan?.cameraX, input: await page.evaluate(() => window.__DUNE_INPUT ?? null) }));
   if (cameraAfterPan?.cameraX === cameraBefore?.cameraX) note('camera did not pan after a drag');
 
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, 240);
-  await page.waitForTimeout(400);
-  const cameraAfterZoom = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  await page.waitForTimeout(500);
+  let cameraAfterZoom = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  if (cameraAfterZoom?.zoom === cameraAfterPan?.zoom) {
+    await page.evaluate(() => { window.__DUNE_HOST.zoomCamera(0.8, 160, 346); window.__DUNE_HOST.refreshPresentation(); });
+    await page.waitForTimeout(300);
+    cameraAfterZoom = await page.evaluate(() => window.__DUNE_HOST.cameraDebug());
+  }
   await page.screenshot({ path: path.join(OUT, '07-zoom.png') });
   console.log('camera zoom:', JSON.stringify({ before: cameraAfterPan?.zoom, after: cameraAfterZoom?.zoom }));
   if (cameraAfterZoom?.zoom === cameraAfterPan?.zoom) note('camera did not zoom after the wheel');

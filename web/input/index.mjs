@@ -177,7 +177,10 @@ export function createInputLayer(options = {}) {
     ? options.inertia
     : new PanInertia(options.inertia || {});
 
-  const windowOptions = { width: virtualWindow.width, height: virtualWindow.height, fit };
+  // Keep one mutable object: the window can change with orientation, and every
+  // event maps through the current size (no layer rebuild needed).
+  const windowOptions = virtualWindow;
+  windowOptions.fit = fit;
   const positionMapper = (event) => toWindowPoint(event, canvas, windowOptions);
 
   let destroyed = false;
@@ -843,10 +846,21 @@ export function createInputLayer(options = {}) {
     emitStatus();
   };
 
+  /** Update the virtual window size after an orientation/resize change. */
+  function setVirtualWindow(width, height) {
+    if (!(width > 0) || !(height > 0)) return false;
+    virtualWindow.width = Math.round(width);
+    virtualWindow.height = Math.round(height);
+    return true;
+  }
+
   return {
     destroy,
     cancel,
     snapshot,
+    setVirtualWindow, get currentVirtualWindow() {
+      return { width: virtualWindow.width, height: virtualWindow.height };
+    },
     /** Confirm the active placement/Palace target (old PLACE button). */
     confirm: () => confirmTarget(),
     /** Cancel the active placement/Palace target (old CLEAR button). */
