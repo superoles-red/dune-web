@@ -24,6 +24,8 @@ jobs:
         run: node --test tests/saves/*.test.mjs
       - name: WASM emitter unit tests (external ROM/baseline are skipped)
         run: python3 -m unittest discover -s tests/wasm_emitter
+      - name: WASM integration tests (external ROM/baseline are skipped)
+        run: python3 -m unittest discover -s tests/wasm_integration
       - name: Workspace contract (profile, runtime manifest, references)
         run: python3 tools/check_workspace.py
 

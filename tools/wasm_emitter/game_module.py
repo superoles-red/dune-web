@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import time
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from . import abi
 from .encoder import Code, Func, I32, Module
@@ -70,18 +70,29 @@ def _page_handlers(program, instructions: Iterable) -> Dict[int, Dict[int, objec
 
 class ModuleBuilder:
     def __init__(self, abi_desc: abi.CpuAbi, memory: abi.MemoryLayout,
-                 rom: bytes = b"") -> None:
+                 rom: bytes = b"", helper_prefix: str = "",
+                 fail_code_map: Optional[Dict[int, int]] = None) -> None:
         self.abi = abi_desc
         self.memory = memory
         self.rom = rom
+        # Import names: "" for the native/JS-stub target (``env.read_mem``),
+        # "dune_" for the real runtime.wasm (``env.dune_read_mem``).  The
+        # canonical helper names stay the keys of ``self.imports``; only the
+        # wasm import field name changes.
+        self.helper_prefix = helper_prefix
+        self.fail_code_map = dict(fail_code_map or {})
         self.module = Module()
         self.imports: Dict[str, int] = {}
         for name, params, results in abi.HELPERS:
-            self.imports[name] = self.module.import_func("env", name, list(params), list(results))
+            self.imports[name] = self.module.import_func(
+                "env", helper_prefix + name, list(params), list(results)
+            )
         self.module.import_memory("env", "memory", 1)
         self.step_type = self.module.add_type([I32], [])
         self.page_funcs: Dict[int, Func] = {}
-        self.translator = Translator(self.module, self.imports, abi_desc, rom)
+        self.translator = Translator(self.module, self.imports, abi_desc, rom,
+                                     fail_code_map=self.fail_code_map)
+        self.fail_codes_used: Set[int] = set()
 
     # -- page bodies -------------------------------------------------------
     def page_function(self, page: int) -> Func:
@@ -317,16 +328,21 @@ class ModuleBuilder:
         self.fail(code, abi.FAIL_UNTRANSLATED)
         code.return_()
 
+    def emitted_fail_code(self, fail_code: int) -> int:
+        """Canonical fail code -> the code of the runtime that runs the module."""
+        self.fail_codes_used.add(fail_code)
+        return self.fail_code_map.get(fail_code, fail_code)
+
     def fail(self, code: Code, fail_code: int) -> None:
         code.local_get(0)
-        code.i32_const(fail_code)
+        code.i32_const(self.emitted_fail_code(fail_code))
         code.local_get(0)
         code.i32_load(offset=self.abi.pc)
         code.call(self.imports["fail"])
 
     def fail_with_pc(self, code: Code, fail_code: int, pc_local: int) -> None:
         code.local_get(0)
-        code.i32_const(fail_code)
+        code.i32_const(self.emitted_fail_code(fail_code))
         code.local_get(pc_local)
         code.call(self.imports["fail"])
 
@@ -365,6 +381,7 @@ class ModuleBuilder:
         self.module.export_table("__indirect_function_table")
         data = self.module.build()
         elapsed = (time.perf_counter() - started) * 1000.0
+        used_codes = sorted(self.fail_codes_used | self.translator.fail_codes_used)
         return data, {
             "generation_ms": round(elapsed, 3),
             "functions": {
@@ -373,7 +390,10 @@ class ModuleBuilder:
                 "warmup_all": warmup.index,
                 "translated_step_via_table": via.index,
             },
-            "imports": [name for name, _, _ in abi.HELPERS],
+            "imports": [self.helper_prefix + name for name, _, _ in abi.HELPERS],
+            "helper_prefix": self.helper_prefix,
+            "fail_code_map": {str(key): value for key, value in sorted(self.fail_code_map.items())},
+            "fail_codes_used": used_codes,
             "exports": [
                 "translated_step",
                 "translated_step_via_table",
@@ -411,7 +431,8 @@ def _module_metrics(data: bytes, skeleton: bytes, meta: dict, instruction_count:
 
 def build_module(program, instructions, abi_desc: abi.CpuAbi,
                  memory: abi.MemoryLayout, page: Optional[int] = None,
-                 label: str = "") -> Tuple[bytes, dict]:
+                 label: str = "", helper_prefix: str = "",
+                 fail_code_map: Optional[Dict[int, int]] = None) -> Tuple[bytes, dict]:
     """Build a module for a set of real decoded instructions.
 
     ``program`` supplies the ROM bytes and the RAM-variant table; ``instructions``
@@ -426,10 +447,11 @@ def build_module(program, instructions, abi_desc: abi.CpuAbi,
     for inst in selected:
         if inst.pc in program.ram_variants:
             variants[inst.pc] = program.ram_variants[inst.pc]
-    builder = ModuleBuilder(abi_desc, memory, program.rom)
+    builder = ModuleBuilder(abi_desc, memory, program.rom, helper_prefix, fail_code_map)
     data, build_meta = builder.build(handlers, variants)
     # Skeleton: identical page/dispatch structure but no handler bodies.
-    skeleton_builder = ModuleBuilder(abi_desc, memory, program.rom)
+    skeleton_builder = ModuleBuilder(abi_desc, memory, program.rom, helper_prefix,
+                                     fail_code_map)
     skeleton, _ = skeleton_builder.build(
         {pg: {} for pg in handlers}, {}
     )
@@ -461,7 +483,9 @@ def build_module(program, instructions, abi_desc: abi.CpuAbi,
 
 def build_page_module(program, page: int, abi_desc: abi.CpuAbi,
                       memory: abi.MemoryLayout,
-                      instructions: Optional[Iterable] = None) -> Tuple[bytes, dict]:
+                      instructions: Optional[Iterable] = None,
+                      helper_prefix: str = "",
+                      fail_code_map: Optional[Dict[int, int]] = None) -> Tuple[bytes, dict]:
     """Build the module for one real 4 KiB ROM page."""
     if instructions is None:
         instructions = [
@@ -476,7 +500,8 @@ def build_page_module(program, page: int, abi_desc: abi.CpuAbi,
                 "instruction $%06x is not on page $%03x" % (inst.pc, page)
             )
     return build_module(program, instructions, abi_desc, memory, page=page,
-                        label="page_%03x" % page)
+                        label="page_%03x" % page, helper_prefix=helper_prefix,
+                        fail_code_map=fail_code_map)
 
 
 def unsupported_ops(instructions: Iterable) -> Dict[str, int]:

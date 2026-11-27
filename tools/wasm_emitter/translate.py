@@ -20,7 +20,7 @@ are imported lazily because they use Python 3.10 annotation syntax.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 from . import abi
 from .encoder import Code, Func, I32, Module
@@ -120,7 +120,8 @@ class Translator:
     """Emit one instruction handler into ``func`` (page function)."""
 
     def __init__(self, module: Module, imports: Dict[str, int], abi_desc: abi.CpuAbi,
-                 rom: bytes = b"", scratch: Optional[Scratch] = None) -> None:
+                 rom: bytes = b"", scratch: Optional[Scratch] = None,
+                 fail_code_map: Optional[Dict[int, int]] = None) -> None:
         self.module = module
         self.imports = imports
         self.abi = abi_desc
@@ -130,6 +131,11 @@ class Translator:
         self.scratch: Optional[Scratch] = None
         self.inst = None
         self.cond_index: Optional[int] = None
+        # Canonical fail code (the one the native C oracle reports and the
+        # emitter's abi.FAIL_* constants use) -> the fail code of the runtime
+        # that will execute the module.  Empty for the default/native target.
+        self.fail_code_map: Dict[int, int] = dict(fail_code_map or {})
+        self.fail_codes_used: Set[int] = set()
 
     # -- low level ---------------------------------------------------------
     def helper(self, name: str) -> int:
@@ -198,8 +204,9 @@ class Translator:
         return self
 
     def fail(self, code: int) -> "Translator":
+        self.fail_codes_used.add(code)
         self.push_c()
-        self.const(code)
+        self.const(self.fail_code_map.get(code, code))
         self.load_u32(self.abi.pc)
         self.code.call(self.helper("fail"))
         return self
