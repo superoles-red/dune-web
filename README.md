@@ -1,5 +1,9 @@
 # Dune: The Battle for Arrakis — BYOP web port
 
+[**Открыть тестовую сборку**](https://superoles-red.github.io/dune-web/) ·
+[CI](https://github.com/superoles-red/dune-web/actions) ·
+[Issues](https://github.com/superoles-red/dune-web/issues)
+
 Неофициальный веб-порт Dune для Sega Genesis (USA). Игра **не поставляется**: вы приносите
 свой ROM (1 048 576 байт, USA-версия), ядро игры перекомпилируется **в вашем браузере** и
 кэшируется на устройстве. Это не эмулятор: программа Sega статически переводится в WebAssembly
@@ -7,6 +11,22 @@
 
 An unofficial BYOP web port of the USA Sega Genesis release. No game data is shipped: the player
 supplies the ROM, and the Sega program is statically recompiled to WebAssembly in the browser.
+
+## Как проверить на телефоне или ПК
+
+1. Откройте [superoles-red.github.io/dune-web](https://superoles-red.github.io/dune-web/) в
+   Chrome/Safari и выберите свой ROM `Dune - The Battle for Arrakis (USA).gen`
+   (1 048 576 байт). Файл не покидает устройство.
+2. Нажмите «Собрать ядро» и дождитесь вердикта: SHA ядра должен совпасть с эталоном
+   `d7c84066…` (20 417 216 байт). Первая сборка — несколько минут на телефоне, повторная —
+   из кэша.
+3. В разделе «Сохранения» импортируйте файл из старой версии (`*.dune-save.json`, выгружается
+   в старой игре через `FILES & OFFLINE` → `DOWNLOAD SAVE`) и проверьте, что дом, миссия и
+   прогресс определились.
+
+**Это осознанно промежуточный этап:** сейчас проверяются сборка ядра из ROM и перенос сохранений.
+Сама игра пока не рендерится — игровая оболочка (тач/зум/меню) следующий этап. Сломанной сборкой
+это не является; на странице тот же статус написан явно.
 
 ## Состояние (2026-11-27)
 
@@ -20,8 +40,11 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
 - **Сохранения совместимы со старой версией:** новые файлы формата `dune-sega-web-save` v1
   с нативным payload `DSAV v2` принимаются как есть; можно импортировать `*.dune-save.json`
   из старой игры. См. [docs/SAVES.md](docs/SAVES.md).
-- **Не готово:** сборка WASM на устройстве без компилятора C (этап 2, см.
-  [docs/WASM-BACKEND.md](docs/WASM-BACKEND.md)) и игровая оболочка-рендер (этап 3).
+- **Опубликовано для тестирования:** https://superoles-red.github.io/dune-web/ (CI и Pages
+  зелёные; в артефакт деплоя игровые данные не попадают).
+- **Не готово:** генерация WASM на устройстве без компилятора C (этап 3, см.
+  [docs/WASM-BACKEND.md](docs/WASM-BACKEND.md), [docs/WASM-EMITTER.md](docs/WASM-EMITTER.md))
+  и игровая оболочка-рендер.
 
 ## Как запустить локально
 
