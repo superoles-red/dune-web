@@ -463,7 +463,7 @@ if (!args['verify-only']) {
 // The full module's translated_z80_step must report the canonical UNTRANSLATED
 // failure (Z80 translation is out of scope), never a fake success.
 let z80Smoke = null;
-if (!args['verify-only'] && !args['no-z80-smoke'] && checks.game_z80_export) {
+if (!args['no-z80-smoke'] && checks.game_z80_export) {
   resetCpuFields();
   const ram = new Uint8Array(rt.memory.buffer, RAM, RAM_SIZE);
   ram.fill(0);

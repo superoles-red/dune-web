@@ -284,9 +284,9 @@ async function initSaves() {
       try {
         const archive = await savesModule.parseSaveFile(await file.text());
         const transaction = savesModule.commitSaveFile({ store: campaignStore, archive });
+        refresh();
         $('saves-status').textContent = `Загружено: ${describe(transaction.progress, transaction.continue)}`;
         log(`Сейв импортирован из ${file.name}`);
-        refresh();
       } catch (error) {
         $('saves-status').textContent = error.code === 'incompatible-engine'
           ? 'Файл от другой сборки игры.'
