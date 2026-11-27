@@ -129,6 +129,17 @@ try {
   await page.screenshot({ path: path.join(OUT, '05-map.png') });
   stats = await frameStats(page);
   console.log('map frame:', JSON.stringify(stats));
+  const audio = await page.evaluate(() => {
+    const host = window.__DUNE_HOST;
+    return {
+      enabled: !!host.audio?.enabled,
+      supported: !!host.audio?.supported,
+      stats: host.audio?.stats?.() ?? null,
+    };
+  });
+  console.log('audio:', JSON.stringify({ enabled: audio.enabled, supported: audio.supported, frames: audio.stats?.frames, peak: audio.stats?.peak, rms: audio.stats?.rms, sampleRate: audio.stats?.sampleRate }));
+  if (!audio.enabled) note('audio was not enabled by the play button');
+  if (audio.enabled && !(audio.stats?.frames > 0)) note('audio pipeline produced no frames');
   if (!(stats.canvasNonBlack > 5000)) note('mission map frame looks blank');
 
   // Touch/mouse camera: drag pans, wheel zooms, click selects; the expanded
