@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dune: The Battle for Arrakis — BYOP</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px 16px 56px; background: #120d08; color: #e8d8b8;
+         font: 15px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  main { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; color: #f0c870; }
+  h2 { font-size: 15px; margin: 0 0 10px; color: #f0c870; }
+  .sub { color: #9a8565; margin-bottom: 22px; }
+  .card { border: 1px solid #3a2c1a; background: #1a130c; padding: 16px; margin-bottom: 14px; }
+  label { display: block; margin-bottom: 8px; color: #c8b48c; }
+  input[type=file] { color: #e8d8b8; }
+  button { margin-top: 12px; padding: 9px 18px; background: #f0c870; border: 0; color: #1a130c;
+           font: inherit; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.secondary { background: #3a2c1a; color: #e8d8b8; font-weight: 400; }
+  #status { margin-top: 12px; min-height: 22px; color: #f0c870; white-space: pre-wrap; }
+  .bar { height: 6px; background: #2a2014; margin-top: 10px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: #f0c870; transition: width .25s; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td { padding: 2px 8px 2px 0; vertical-align: top; }
+  td:first-child { color: #9a8565; white-space: nowrap; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-size: 12px; max-height: 340px; overflow: auto; }
+  .ok { color: #8fd08f; } .bad { color: #e08070; }
+  .hint { color: #9a8565; font-size: 12px; margin-top: 8px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  #dump-table { margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dune: The Battle for Arrakis — BYOP</h1>
+  <div class="sub">Sega Genesis, USA. Игру не поставляем: вы приносите свой ROM, ядро собирается
+  в вашем браузере. Первая сборка занимает несколько минут, результат кэшируется на устройстве.</div>
+
+  <section class="card" id="rom-card">
+    <h2>1. ROM</h2>
+    <label for="rom-input">Образ Dune — The Battle for Arrakis (USA), 1 048 576 байт</label>
+    <input id="rom-input" type="file" accept=".gen,.bin,.md,application/octet-stream">
+    <table id="dump-table"><tbody></tbody></table>
+    <button id="build" disabled>Собрать ядро</button>
+    <div class="bar" id="progress-wrap" hidden><i id="progress"></i></div>
+    <div id="status">Жду ROM…</div>
+    <div class="hint">Файл не покидает страницу: проверка, перекомпиляция и кэш — локально в браузере.</div>
+  </section>
+
+  <section class="card" id="result-card" hidden>
+    <h2>2. Результат</h2>
+    <table id="result-table"><tbody></tbody></table>
+  </section>
+
+  <section class="card" id="saves-card">
+    <h2>3. Сохранения</h2>
+    <div class="hint">Перенос сохранений из старой версии: импорт файла <code>*.dune-save.json</code>
+    или авто-подхват старых ключей браузера. Экспорт нового сохранения — здесь же.</div>
+    <div class="row">
+      <input id="save-file" type="file" accept=".json,application/json">
+      <button id="save-import" class="secondary" disabled>Импортировать сейв</button>
+      <button id="save-export" class="secondary" disabled>Экспортировать</button>
+    </div>
+    <div id="save-status" class="hint">Проверка старого сохранения…</div>
+  </section>
+
+  <section class="card" id="log-card">
+    <h2>Журнал</h2>
+    <pre id="log">—</pre>
+  </section>
+</main>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

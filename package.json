@@ -1,0 +1,20 @@
+{
+  "name": "dune-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Dune: The Battle for Arrakis (Sega Genesis, USA) \u2014 BYOP web port: bring your own ROM, the game core is recompiled in your browser.",
+  "scripts": {
+    "test": "node --test tests/saves/*.test.mjs",
+    "test:saves": "node --test tests/saves/*.test.mjs",
+    "serve": "/usr/bin/python3 tools/serve.py --port 4188",
+    "bundle": "/usr/bin/python3 tools/bundle_web.py",
+    "smoke": "node tests/browser/smoke.mjs"
+  },
+  "dependencies": {
+    "pyodide": "0.28.3"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

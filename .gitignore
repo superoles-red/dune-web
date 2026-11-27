@@ -1,0 +1,26 @@
+# build and local-only inputs (never commit game data)
+.local/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+
+# generated web bundle (built from MIT sources by tools/bundle_web.py)
+web/vendor/
+web/py-package.zip
+web/reference.json
+
+# test artifacts
+test-results/
+*.log
+
+# generated python bundle (assembled by tools/bundle_web.py from committed sources)
+web/py-src/genesis_recompiler/
+web/py-src/dune-runtime.c
+web/py-src/profile.json
+web/py-src/reference.json
+runtime/reference.json
+
+# wasm prototype build products
+prototype/wasm/build/
+prototype/wasm/__pycache__/
