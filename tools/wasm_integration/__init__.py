@@ -14,7 +14,12 @@ port of the runtime helpers.  This package closes the remaining gap:
   into ``dune_rt_rom_buffer()`` and runs the differential cases through
   ``dune_rt_translated_step`` / ``dune_rt_machine_step``;
 * ``check_integration.py`` is the one command that does all of the above plus
-  the native C oracle comparison.
+  the native C oracle comparison;
+* ``build_full_module.py`` emits the single all-pages ``game.wasm`` (48 pages /
+  40 382 instructions for Dune USA) with the honest ``translated_z80_step``
+  UNTRANSLATED stub -- see ``docs/WASM-FULL-MODULE.md``;
+* ``check_full_integration.py`` runs the linked differential of that full module
+  across every page (the native C oracle comparison included).
 
 Only stdlib Python and Node are used; no emsdk is required.
 """
