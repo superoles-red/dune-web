@@ -13,7 +13,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const PORT = Number(process.env.SMOKE_PORT || (4200 + Math.floor(Math.random() * 300)));
 const URL = `http://127.0.0.1:${PORT}/`;
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const ROM = process.env.DUNE_ROM || '/Users/oleskarpov/Downloads/Dune - The Battle for Arrakis (USA).gen';
+const ROM = process.env.DUNE_ROM ? path.resolve(process.env.DUNE_ROM) : null;
 const RESULT_DIR = path.join(ROOT, 'test-results');
 const TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -25,8 +25,8 @@ function fail(message) {
 for (const required of ['web/reference.json', 'web/py-package.zip', 'web/vendor/pyodide/pyodide.asm.wasm']) {
   if (!fs.existsSync(path.join(ROOT, required))) fail(`${required} is missing; run npm install && python3 tools/bundle_web.py`);
 }
-if (!fs.existsSync(ROM)) {
-  console.log(`smoke SKIPPED: ROM not found at ${ROM} (set DUNE_ROM=...)`);
+if (!ROM || !fs.existsSync(ROM)) {
+  console.log('smoke SKIPPED: set DUNE_ROM=/path/to/Dune-USA.gen to run the browser check');
   process.exit(0);
 }
 if (!fs.existsSync(CHROME)) fail(`Chrome not found: ${CHROME}`);

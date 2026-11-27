@@ -28,10 +28,10 @@ OPFS-кэш, телефон) — следующие этапы, см. дизай
 ## Как запустить
 
 ```sh
-cd "/Users/oleskarpov/Documents/My Gamedev/dune-web"
+cd dune-web
 
 # 1. сгенерировать модули (системный python3 3.9 тоже подходит — код stdlib-совместимый)
-/Users/oleskarpov/.local/bin/python3.12 prototype/wasm/emit_poc.py
+python3 prototype/wasm/emit_poc.py
 #    или: python3 prototype/wasm/emit_poc.py
 
 # 2. проверить (Node 24)

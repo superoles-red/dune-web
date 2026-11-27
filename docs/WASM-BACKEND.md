@@ -935,11 +935,11 @@ prototype/wasm/            PoC и его команды (этот репозит
 ## Приложение D. Команды PoC (воспроизводимость)
 
 ```sh
-cd "/Users/oleskarpov/Documents/My Gamedev/dune-web"
-/Users/oleskarpov/.local/bin/python3.12 prototype/wasm/emit_poc.py
+cd dune-web
+python3 prototype/wasm/emit_poc.py
 /usr/local/bin/node prototype/wasm/run_poc.mjs
 # self-test кодировщика:
-/Users/oleskarpov/.local/bin/python3.12 prototype/wasm/wasm_emit.py
+python3 prototype/wasm/wasm_emit.py
 ```
 
 Ожидаемый вывод: `OK: 118 checks passed`. Числа из §0.1/§6.2 получены этим прогоном
@@ -952,7 +952,7 @@ import 2,1–4,4 нс, JS 3,9–4,2 нс, call_indirect 2,1–2,2 нс.
 
 ```sh
 mkdir -p /tmp/dune-oracle && cd /tmp/dune-oracle
-cp "/Users/oleskarpov/Documents/My Gamedev/Dune Sega Web/vendor/rearrakis/build/dune-base.c" .
+cp /path/to/dune-base.c .
 clang -std=c11 -O2 -Wno-unused-function dune-base.c -o dune-headless
 ./dune-headless --headless --audio stub --limit 30000000
 # status=budget steps=30000000 … timing cycles=325443238 frames=2542 …
