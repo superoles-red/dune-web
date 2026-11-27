@@ -44,9 +44,12 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
   из старой игры. См. [docs/SAVES.md](docs/SAVES.md).
 - **Опубликовано для тестирования:** https://superoles-red.github.io/dune-web/ (CI и Pages
   зелёные; в артефакт деплоя игровые данные не попадают).
-- **Не готово:** генерация WASM на устройстве без компилятора C (этап 3, см.
-  [docs/WASM-BACKEND.md](docs/WASM-BACKEND.md), [docs/WASM-EMITTER.md](docs/WASM-EMITTER.md))
-  и игровая оболочка-рендер.
+- **Этап 3, Phase 1 готов:** `runtime.wasm` собран (894 968 B, детерминирован, ABI 140 слов,
+  save API, диспетчеризация) — [docs/WASM-RUNTIME.md](docs/WASM-RUNTIME.md); эмиттер реальных
+  страниц сверен с C-оракулом на 21 360 состояниях, 0 расхождений —
+  [docs/WASM-EMITTER.md](docs/WASM-EMITTER.md).
+- **Не готово:** связка полного `game.wasm` (все страницы + Z80) с рантаймом, браузерный
+  воркер на WASM-пути и игровая оболочка-рендер.
 
 ## Как запустить локально
 

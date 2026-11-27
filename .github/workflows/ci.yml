@@ -22,5 +22,31 @@ jobs:
         run: python3 -m compileall -q tools web/py-src
       - name: Save compatibility tests
         run: node --test tests/saves/*.test.mjs
+      - name: WASM emitter unit tests (external ROM/baseline are skipped)
+        run: python3 -m unittest discover -s tests/wasm_emitter
       - name: Workspace contract (profile, runtime manifest, references)
         run: python3 tools/check_workspace.py
+
+  wasm-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: "3.1.74"
+      - name: Remember the committed runtime hash
+        run: sha256sum runtime/wasm/runtime.wasm | cut -d' ' -f1 > "$RUNNER_TEMP/committed.sha256"
+      - name: Build runtime.wasm from the pinned MIT runtime
+        run: python3 tools/wasm_runtime/build_runtime.py
+      - name: Runtime module tests
+        run: node --test 'tests/wasm_runtime/**/*.test.mjs'
+      - name: Fresh build reproduces the committed runtime.wasm
+        run: |
+          sha256sum runtime/wasm/runtime.wasm | cut -d' ' -f1 > "$RUNNER_TEMP/rebuilt.sha256"
+          diff -u "$RUNNER_TEMP/committed.sha256" "$RUNNER_TEMP/rebuilt.sha256"
