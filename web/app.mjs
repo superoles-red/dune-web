@@ -28,6 +28,9 @@ const state = {
   reference: null,
   host: null,
   input: null,
+  building: null,
+  buildingTimer: 0,
+  lastBuildingPointer: 0,
   log: [],
 };
 
@@ -311,14 +314,42 @@ async function startPlay({ resume = false } = {}) {
     state.input = createInputLayer({
       host,
       canvas: $('game-canvas'),
-      isInputCaptured: () => !state.host || !$('game-sheet').classList.contains('hidden'),
+      isInputCaptured: () => !state.host || !$('game-sheet').classList.contains('hidden') || Boolean(state.building?.active),
       onStatus: (snapshot) => {
         window.__DUNE_INPUT = snapshot;
         updateHud(snapshot);
       },
-      onOrder: (order) => log(`input: ${order.type}`),
+      onOrder: (order) => {
+        log(`input: ${order.type}`);
+        // A double tap on an own building should always reach the native menu.
+        // From an unselected state the two taps only select; nudge once more.
+        if (order.type === 'select' && order.hit?.target?.kind === 'building' && order.hit.target.own) {
+          // Tapping an already selected own building opens its native console.
+          if (state.lastBuildingPointer === order.hit.target.pointer) {
+            setTimeout(() => {
+              if (state.host && !state.host.buildingUi?.()?.active) {
+                state.host.call('dune_web_select_screen', order.x, order.y);
+                setTimeout(refreshBuildingMenu, 300);
+              }
+            }, 160);
+          }
+          state.lastBuildingPointer = order.hit.target.pointer;
+        } else if (order.type !== 'building-menu') {
+          state.lastBuildingPointer = 0;
+        }
+        if (order.type === 'building-menu') {
+          setTimeout(() => {
+            if (state.host && !state.host.buildingUi?.()?.active) {
+              state.host.call('dune_web_select_screen', order.x, order.y);
+              setTimeout(refreshBuildingMenu, 350);
+            }
+          }, 240);
+        }
+      },
     });
     syncGameViewport();
+    window.__DUNE_APP = { refreshBuildingMenu, state };
+    state.buildingTimer = setInterval(refreshBuildingMenu, 160);
     window.addEventListener('resize', scheduleGameViewportSync);
     window.addEventListener('orientationchange', scheduleGameViewportSync);
     gameLoading(false);
@@ -338,6 +369,11 @@ async function startPlay({ resume = false } = {}) {
 
 function stopPlay() {
   $('game-hud').hidden = true;
+  if (state.buildingTimer) clearInterval(state.buildingTimer);
+  state.buildingTimer = 0;
+  state.building = null;
+  $('building-cells').hidden = true;
+  document.body.classList.remove('building-mode');
   state.input?.destroy?.();
   state.input = null;
   if (state.host) {
@@ -353,7 +389,6 @@ $('new-game').addEventListener('click', () => startPlay({ resume: false }));
 $('hud-b').addEventListener('click', () => hudAction('confirm'));
 $('hud-place').addEventListener('click', () => hudAction('confirm'));
 $('hud-clear').addEventListener('click', () => hudAction('clear'));
-$('game-back').addEventListener('click', stopPlay);
 
 // On-screen pad: press on pointerdown, release on pointerup/cancel/leave.
 for (const button of document.querySelectorAll('[data-pad]')) {
@@ -501,6 +536,73 @@ const HUD_LABELS = {
   'confirm-native': 'CONFIRM',
 };
 
+// The native building menu is drawn from its own completed 320x224 frame; the
+// transparent grid over it routes taps to building_ui_tap(col,row), so the
+// player sees the original graphics and the original guards stay in charge.
+// Exposed for diagnostics/tests only (same pattern as window.__DUNE_INPUT).
+window.__DUNE_APP = null;
+
+function refreshBuildingMenu() {
+  if (!state.host) return;
+  const ui = state.host.buildingUi?.();
+  const active = Boolean(ui?.active);
+  if (active) {
+    state.building = ui;
+    // The building menu is the native UI overlay composited over the world; the
+    // expanded presenter at exactly 320x224 gives the original console picture.
+    state.host.attachVirtualWindow?.({ width: 320, height: 224 });
+    state.host.setPresentation?.('expanded');
+    renderBuildingMenu(ui);
+    return;
+  }
+  if (state.building) {
+    state.building = null;
+    $('building-cells').hidden = true;
+    $('building-cells').replaceChildren();
+    document.body.classList.remove('building-mode');
+    state.host.setPresentation?.('auto');
+    syncGameViewport();
+    updateHud(window.__DUNE_INPUT ?? null);
+  }
+}
+
+function renderBuildingMenu(ui) {
+  const canvas = $('game-canvas');
+  document.body.classList.add('building-mode');
+  $('game-hud').hidden = true;
+  const overlay = $('building-cells');
+  const stage = document.querySelector('.game-stage');
+  const canvasBox = canvas.getBoundingClientRect();
+  const stageBox = stage.getBoundingClientRect();
+  overlay.hidden = false;
+  overlay.style.left = `${Math.round(canvasBox.left - stageBox.left)}px`;
+  overlay.style.top = `${Math.round(canvasBox.top - stageBox.top)}px`;
+  overlay.style.width = `${Math.round(canvasBox.width)}px`;
+  overlay.style.height = `${Math.round(canvasBox.height)}px`;
+  const cells = Array.isArray(ui.cells) ? ui.cells : [];
+  const width = ui.frame?.width || 320;
+  const height = ui.frame?.height || 224;
+  overlay.replaceChildren(...cells.map((cell) => {
+    const button = document.createElement('button');
+    const rect = cell.sourceRect || {};
+    button.style.left = `${((rect.x || 0) / width) * 100}%`;
+    button.style.top = `${((rect.y || 0) / height) * 100}%`;
+    button.style.width = `${((rect.w || 32) / width) * 100}%`;
+    button.style.height = `${((rect.h || 24) / height) * 100}%`;
+    button.setAttribute('aria-label', cell.label || `${cell.key || 'cell'}`);
+    button.title = cell.label || '';
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const accepted = state.host?.tapBuildingCell?.(cell.col, cell.row) ?? 0;
+      log(`Меню здания: ${cell.key || `${cell.col},${cell.row}`} → ${accepted ? 'принято' : 'отклонено'}`);
+      setTimeout(refreshBuildingMenu, 140);
+      setTimeout(refreshBuildingMenu, 420);
+    });
+    return button;
+  }));
+}
+
 function updateHud(snapshot) {
   const hud = $('game-hud');
   if (!hud) return;
@@ -561,6 +663,16 @@ function toggleFullscreen() {
   else document.exitFullscreen?.().catch(() => {});
 }
 
+$('game-back').addEventListener('click', () => {
+  if (state.building?.active) {
+    const cells = state.building.cells || [];
+    const exit = cells.find((cell) => cell.key === 'exit') || cells.find((cell) => cell.row === (state.building.rows || 1) - 1 && cell.col === 2);
+    if (exit) state.host?.tapBuildingCell?.(exit.col, exit.row);
+    setTimeout(refreshBuildingMenu, 200);
+    return;
+  }
+  stopPlay();
+});
 $('game-menu').addEventListener('click', openGameMenu);
 $('game-sheet-close').addEventListener('click', closeGameMenu);
 $('game-exit').addEventListener('click', () => { closeGameMenu(); stopPlay(); });

@@ -179,6 +179,72 @@ try {
   const hudCleared = await page.evaluate(() => document.getElementById('game-hud').hidden);
   if (!hudCleared) note('CLEAR did not hide the context HUD');
 
+  // Building menu: a double tap on an own building opens the native console
+  // (EXIT/FIX/STOP + purchase grid). The overlay routes taps into
+  // building_ui_tap(col,row); EXIT closes it.
+  const menuVisible = () => page.evaluate(() => document.getElementById('building-cells').hidden === false);
+  const tryOpenMenu = async (label, action) => {
+    await action();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await page.waitForTimeout(250);
+      if (await menuVisible()) return label;
+    }
+    return null;
+  };
+  let openedBy = await tryOpenMenu('dblclick', () => page.mouse.dblclick(hudBox.x + hudBox.width / 2, hudBox.y + hudBox.height / 2, { delay: 90 }));
+  if (!openedBy) {
+    openedBy = await tryOpenMenu('select+dblclick', async () => {
+      await page.mouse.click(hudBox.x + hudBox.width / 2, hudBox.y + hudBox.height / 2);
+      await page.waitForTimeout(600);
+      await page.mouse.dblclick(hudBox.x + hudBox.width / 2, hudBox.y + hudBox.height / 2, { delay: 90 });
+    });
+  }
+  if (!openedBy) {
+    openedBy = await tryOpenMenu('native taps', async () => {
+      await page.evaluate(() => {
+        const host = window.__DUNE_HOST;
+        host.tapScreen(160, 346);
+        host.advanceInstructions(700_000);
+        host.tapScreen(160, 346);
+        host.advanceInstructions(700_000);
+      });
+    });
+  }
+  console.log('building menu opened by:', openedBy);
+  if (!openedBy) note('building menu did not open after a double tap');
+  const building = await page.evaluate(() => {
+    const h = window.__DUNE_HOST;
+    const ui = h.buildingUi?.();
+    return {
+      active: !!ui?.active,
+      rows: ui?.rows,
+      buttons: document.querySelectorAll('#building-cells button').length,
+      canvas: [document.getElementById('game-canvas').width, document.getElementById('game-canvas').height],
+      exitIndex: Array.isArray(ui?.cells) ? ui.cells.findIndex((cell) => cell.key === 'exit') : -1,
+      selectedIndex: ui?.selectedIndex,
+    };
+  });
+  console.log('building menu:', JSON.stringify(building));
+  await page.screenshot({ path: path.join(OUT, '05d-building.png') });
+  if (!building.active) note('building_ui_json is not active after the menu tap');
+  if (building.buttons !== (building.rows || 0) * 3) note(`building grid buttons ${building.buttons} != rows*3`);
+  if (building.canvas[0] !== 320 || building.canvas[1] !== 224) note('building menu canvas is not 320x224');
+  if (building.buttons > 1) {
+    await page.locator('#building-cells button').nth(1).click();
+    await page.waitForTimeout(700);
+    const after = await page.evaluate(() => window.__DUNE_HOST.buildingUi?.() ?? null);
+    console.log('building menu after cell:', JSON.stringify({ selectedIndex: after?.selectedIndex, active: after?.active }));
+  }
+  if (building.exitIndex >= 0) {
+    await page.locator('#building-cells button').nth(building.exitIndex).click();
+    const menuClosed = await page.waitForFunction(
+      () => document.getElementById('building-cells').hidden === true,
+      null, { timeout: 15000 },
+    ).then(() => true).catch(() => false);
+    if (!menuClosed) note('building menu did not close through the EXIT cell');
+    await page.waitForTimeout(700);
+  }
+
   // Orientation: the map must reframe itself like the old port — portrait fills
   // the screen vertically, landscape horizontally. Then go back to portrait.
   const portraitBox = await page.locator('#game-canvas').boundingBox();

@@ -408,6 +408,19 @@ export function createInputLayer(options = {}) {
     select: selectMapObject,
     command: (x, y, token) => {
       pendingReadyYard = null;
+      // In the original game a second tap on an own building opens its native
+      // menu (the old QA does worldTap twice); the command path is for actors.
+      // Use the live hit-test rather than the (50 ms) polled snapshot: the
+      // second tap of a double tap can arrive before the poll saw the select.
+      const target = readTargetState(x, y).target;
+      const selected = target && target.kind === 'building'
+        ? target
+        : latestActions.selected;
+      if (selected && selected.kind === 'building' && selected.own) {
+        const menuResult = selectMapObject(x, y);
+        notifyOrder({ type: 'building-menu', x, y, result: menuResult });
+        return menuResult;
+      }
       counters.commandRequests += 1;
       const result = safeCall('dune_web_command_screen', x, y, token) ?? 0;
       notifyOrder({ type: 'command', x, y, token, result });

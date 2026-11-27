@@ -380,6 +380,61 @@ export class DuneHost {
     return this.metrics;
   }
 
+  /* -------------------------------------------------------- building menu -- */
+
+  /** Read a NUL-terminated UTF-8 string from wasm memory. */
+  readCString(pointer) {
+    const bytes = new Uint8Array(this.memory.buffer, pointer);
+    let end = 0;
+    while (end < bytes.length && bytes[end]) end += 1;
+    return new TextDecoder().decode(bytes.subarray(0, end));
+  }
+
+  /** Live native building/Starport menu state (JSON) or null outside a menu. */
+  buildingUi() {
+    try {
+      const pointer = this.exports?.dune_web_building_ui_json?.();
+      if (!pointer) return null;
+      const text = this.readCString(pointer);
+      return text ? JSON.parse(text) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Native 320x224 building-menu frame as RGBA pixels, or null. */
+  buildingFrame() {
+    try {
+      const pointer = this.exports?.dune_web_building_ui_frame_rgb?.();
+      if (!pointer) return null;
+      const rgb = new Uint8Array(this.memory.buffer, pointer, 320 * 224 * 3);
+      const data = new Uint8ClampedArray(320 * 224 * 4);
+      for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+        data[j] = rgb[i];
+        data[j + 1] = rgb[i + 1];
+        data[j + 2] = rgb[i + 2];
+        data[j + 3] = 255;
+      }
+      return { width: 320, height: 224, data };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Queue one native cell intent for the active building menu. */
+  tapBuildingCell(col, row) {
+    try {
+      const checked = this.exports?.dune_web_building_ui_tap_checked;
+      const ui = this.buildingUi();
+      if (checked && ui && Number.isFinite(ui.context) && Number.isFinite(ui.producer?.pointer)) {
+        return checked(ui.context, ui.producer.pointer, col, row) ?? 0;
+      }
+      return this.exports?.dune_web_building_ui_tap?.(col, row) ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
   /* ---------------------------------------------------------- touch/input -- */
 
   /**
@@ -544,9 +599,13 @@ export class DuneHost {
       if (!this.metrics.stalled) this.stallLogged = false;
       this.lastCycles = this.metrics.masterCycles;
       this.audio.pump();
+      // 'building' means the app owns the canvas: it paints the native
+      // building-menu frame and routes cell taps through building_ui_tap.
       const expanded = this.presentation === 'expanded'
         || (this.presentation === 'auto' && this.#missionMap());
-      if (expanded) {
+      if (this.presentation === 'building') {
+        /* app-owned frame */
+      } else if (expanded) {
         if (now - this.lastExpandedAt >= this.expandedIntervalMs) {
           this.drawExpandedFrame();
           this.lastExpandedAt = now;
@@ -577,7 +636,7 @@ export class DuneHost {
 
   /** Presentation policy: 'auto' shows the expanded mission overview on the map. */
   setPresentation(mode) {
-    if (!['auto', 'native', 'expanded'].includes(mode)) throw new HostError(`unknown presentation ${mode}`);
+    if (!['auto', 'native', 'expanded', 'building'].includes(mode)) throw new HostError(`unknown presentation ${mode}`);
     this.presentation = mode;
     this.refreshPresentation();
     return this.presentation;

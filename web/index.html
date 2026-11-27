@@ -108,6 +108,12 @@
              border-top-color: var(--accent); animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .game-top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; z-index: 3; }
+  .building-mode .game-controls, .building-mode .hud, .building-mode .game-top { display: none; }
+  .building-cells { position: absolute; z-index: 5; }
+  .building-cells button { position: absolute; padding: 0; margin: 0; border: 0; background: transparent;
+                           border-radius: 3px; pointer-events: auto; }
+  .building-cells button:focus-visible { outline: 2px solid #ffd873; }
+  .building-cells button:active { background: rgba(255,216,115,.28); }
   .hud { position: absolute; right: 14px; bottom: 154px; display: flex; flex-direction: column;
          gap: 10px; align-items: flex-end; z-index: 4; }
   .hud-btn { min-width: 92px; height: 46px; padding: 0 16px; border-radius: 23px; border: 1px solid #caa54a;
@@ -219,6 +225,7 @@
   <section id="screen-game" class="game hidden" aria-label="Игра">
     <div class="game-stage">
       <canvas id="game-canvas" width="320" height="224"></canvas>
+    <div class="building-cells" id="building-cells" hidden></div>
       <div class="game-loading" id="game-loading"><div class="spinner"></div><span id="game-loading-text">Запускаем игру…</span></div>
     </div>
     <div class="game-top">
