@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dune BYOP — WASM host (debug)</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #0b0d10; color: #d8dee9; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px; }
+  h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: .04em; }
+  p.lead { margin: 0 0 14px; color: #8b98a9; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  label { color: #8b98a9; }
+  input[type=file] { max-width: 320px; color: #d8dee9; }
+  button { background: #1b2531; color: #dbe6f3; border: 1px solid #2c3d50;
+           border-radius: 6px; padding: 6px 11px; font: inherit; cursor: pointer; }
+  button:hover { background: #24344a; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #1d4ed8; border-color: #2563eb; }
+  button.primary:hover { background: #2563eb; }
+  #screen { display: block; width: 640px; height: 448px; image-rendering: pixelated;
+            background: #000; border: 1px solid #2c3d50; border-radius: 4px; }
+  #status { white-space: pre-wrap; background: #10151c; border: 1px solid #1e2937;
+            border-radius: 6px; padding: 10px; min-height: 64px; color: #9fb2c8; }
+  #status.error { color: #ff9b9b; border-color: #5c2626; }
+  .hint { color: #6b7a8d; font-size: 12px; }
+  kbd { background: #1b2531; border: 1px solid #2c3d50; border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DUNE — The Battle for Arrakis · WASM host (path A)</h1>
+  <p class="lead">
+    <code>runtime.wasm</code> (standalone, JS import mocks) + generated
+    <code>game.wasm</code> + your ROM. Frames come from
+    <code>dune_web_frame_rgb()</code> (320×224 RGB24) into the canvas.
+    This page is deliberately minimal — the real UI is <code>web/app.mjs</code>.
+  </p>
+
+  <div class="row">
+    <label for="rom-input">ROM:</label>
+    <input id="rom-input" type="file" accept=".gen,.bin,.md,.smd,application/octet-stream" />
+    <label for="game-input">game.wasm (optional):</label>
+    <input id="game-input" type="file" accept=".wasm,application/wasm" />
+  </div>
+
+  <div class="row">
+    <button id="load" class="primary" disabled>Загрузить ROM</button>
+    <button id="start" disabled>▶ Играть</button>
+    <button id="step" disabled>+1 с эмуляции</button>
+    <button id="press-start" disabled>Start</button>
+    <button id="tap" disabled>Тап в центр</button>
+    <button id="save" disabled>Сейв</button>
+    <button id="loadstate" disabled>Загрузить сейв</button>
+  </div>
+
+  <div class="row">
+    <canvas id="screen" width="320" height="224"></canvas>
+  </div>
+
+  <div class="row hint">
+    Клавиатура: <kbd>↑↓←→</kbd>/<kbd>WASD</kbd> — крестовина, <kbd>Z</kbd>=A,
+    <kbd>X</kbd>=B, <kbd>C</kbd>=C, <kbd>Enter</kbd>=Start, <kbd>Space</kbd>=C.
+  </div>
+
+  <pre id="status">загрузка runtime.wasm…</pre>
+</main>
+<script type="module">
+import { DuneHost } from './host.mjs';
+
+const params = new URLSearchParams(location.search);
+const runtimeUrl = params.get('runtime') || undefined;
+const gameUrlParam = params.get('game') || undefined;
+
+const els = {
+  rom: document.querySelector('#rom-input'),
+  game: document.querySelector('#game-input'),
+  load: document.querySelector('#load'),
+  start: document.querySelector('#start'),
+  step: document.querySelector('#step'),
+  pressStart: document.querySelector('#press-start'),
+  tap: document.querySelector('#tap'),
+  save: document.querySelector('#save'),
+  loadState: document.querySelector('#loadstate'),
+  screen: document.querySelector('#screen'),
+  status: document.querySelector('#status'),
+};
+
+const state = { loaded: false, playing: false, saved: null, lastError: null };
+
+function setStatus(text, isError = false) {
+  els.status.textContent = text;
+  els.status.classList.toggle('error', isError);
+}
+
+function metricsLine(host) {
+  const m = host.metrics;
+  const fault = host.fault ? `\nFAULT code=${host.fault.code} reason=${host.fault.reason} pc=0x${host.fault.pc.toString(16)}` : '';
+  return [
+    `status: ${m.status}`,
+    `runtime ${(m.runtimeBytes / 1024).toFixed(0)} KiB · game ${(m.gameBytes / 1024).toFixed(0)} KiB · mode ${host.gameMode ?? '—'}`,
+    `steps ${m.instructions.toLocaleString()} · emulated ${m.emulatedSeconds.toFixed(2)} s · rendered frames ${m.renderedFrames}`,
+    `frame ${m.frameWidth}×${m.frameHeight} · last run ${m.lastRunSteps.toLocaleString()} steps / ${m.lastRunMs.toFixed(1)} ms (${(m.stepsPerSecond / 1e6).toFixed(1)} M steps/s)` +
+      (m.fps ? ` · ${m.fps.toFixed(0)} fps · ${m.frameMs.toFixed(2)} ms/frame` : ''),
+    m.status.startsWith('booted') ? `boot ${m.bootMs.toFixed(1)} ms · link ${m.linkMs.toFixed(1)} ms · load ${m.loadMs.toFixed(0)} ms` : '',
+  ].join('\n') + fault;
+}
+
+function refresh(host) {
+  if (!state.lastError) setStatus(metricsLine(host));
+}
+
+const host = new DuneHost({
+  canvas: els.screen,
+  runtimeUrl,
+  onStatus: () => refresh(host),
+});
+window.__HOST = host;
+window.__HOST_STATE = state;
+
+function enable(ids, enabled) {
+  for (const id of ids) document.querySelector(`#${id}`).disabled = !enabled;
+}
+
+host.init({ gameUrl: gameUrlParam })
+  .then(() => {
+    setStatus(`runtime готов (${(host.metrics.runtimeBytes / 1024).toFixed(0)} KiB), game.wasm: ${gameUrlParam || 'не загружен'}\nвыбери ROM и нажми «Загрузить ROM»`);
+    enable(['load'], true);
+  })
+  .catch((error) => {
+    state.lastError = error;
+    setStatus(`ошибка загрузки: ${error.message}`, true);
+    console.error(error);
+  });
+
+async function readGameModule() {
+  const file = els.game.files?.[0];
+  if (file) return new Uint8Array(await file.arrayBuffer());
+  return null;
+}
+
+async function loadRom() {
+  const file = els.rom.files?.[0];
+  if (!file) {
+    setStatus('сначала выбери ROM-файл (.gen)', true);
+    return;
+  }
+  try {
+    const game = await readGameModule();
+    if (game) await host.loadGame(game);
+    if (!host.game) throw new Error('game.wasm не загружен: передай ?game=<url> или выбери файл');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await host.loadRomFromBytes(bytes);
+    host.boot();
+    host.drawFrame();
+    state.loaded = true;
+    enable(['start', 'step', 'press-start', 'tap', 'save', 'loadstate'], true);
+    refresh(host);
+  } catch (error) {
+    state.lastError = error;
+    setStatus(`ошибка: ${error.message}`, true);
+    console.error(error);
+  }
+}
+
+els.load.addEventListener('click', loadRom);
+els.rom.addEventListener('change', () => enable(['load'], true));
+
+els.start.addEventListener('click', () => {
+  if (state.playing) {
+    host.stop();
+    state.playing = false;
+    els.start.textContent = '▶ Играть';
+    refresh(host);
+    return;
+  }
+  host.start();
+  state.playing = true;
+  els.start.textContent = '⏸ Пауза';
+});
+
+els.step.addEventListener('click', () => {
+  host.advanceFrames(60, { maxSteps: 60_000_000 });
+  host.drawFrame();
+  refresh(host);
+});
+
+els.pressStart.addEventListener('click', () => {
+  host.pressStart();
+  host.drawFrame();
+  refresh(host);
+});
+
+els.tap.addEventListener('click', () => {
+  // CSS pixels -> native frame pixels, centre tap
+  const result = host.tap(160, 112);
+  setStatus(`${metricsLine(host)}\ntap(160,112) → ${result}${result === 0 ? ' (SDL-window path; use Start/d-pad in path A)' : ''}`);
+});
+
+els.save.addEventListener('click', () => {
+  const bytes = host.saveState();
+  if (!bytes) {
+    setStatus('сейв не удался: dune_save_state_to_buffer() вернул 0', true);
+    return;
+  }
+  state.saved = bytes;
+  setStatus(`${metricsLine(host)}\nсейв ${bytes.byteLength} B в памяти страницы`);
+});
+
+els.loadState.addEventListener('click', () => {
+  if (!state.saved) {
+    setStatus('сейва ещё нет', true);
+    return;
+  }
+  const ok = host.loadState(state.saved);
+  host.drawFrame();
+  setStatus(`${metricsLine(host)}\nload_state → ${ok}`);
+});
+
+/* Keyboard maps to the native pad so the debug page can be driven by hand. */
+const KEYS = {
+  ArrowUp: 0x01, KeyW: 0x01,
+  ArrowDown: 0x02, KeyS: 0x02,
+  ArrowLeft: 0x04, KeyA: 0x04,
+  ArrowRight: 0x08, KeyD: 0x08,
+  KeyZ: 0x10, KeyX: 0x20, KeyC: 0x40, Space: 0x40,
+  Enter: 0x80,
+};
+window.addEventListener('keydown', (event) => {
+  const mask = KEYS[event.code];
+  if (mask === undefined || !host.booted) return;
+  event.preventDefault();
+  host.pad(mask, true);
+});
+window.addEventListener('keyup', (event) => {
+  const mask = KEYS[event.code];
+  if (mask === undefined || !host.booted) return;
+  event.preventDefault();
+  host.pad(mask, false);
+});
+</script>
+</body>
+</html>

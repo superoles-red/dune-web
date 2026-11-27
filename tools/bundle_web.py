@@ -86,10 +86,33 @@ def copy_runtime(manifest: dict) -> None:
     shutil.copy2(runtime_file, PY_SRC / "dune-runtime.c")
 
 
+def copy_wasm_assets() -> None:
+    """Vendor the MIT WASM emitter and the shipped runtime for the browser."""
+    emitter = PY_SRC / "wasm_emitter"
+    if emitter.exists():
+        shutil.rmtree(emitter)
+    emitter.mkdir(parents=True)
+    for source in sorted((ROOT / "tools" / "wasm_emitter").glob("*.py")):
+        shutil.copy2(source, emitter / source.name)
+    shutil.copy2(RUNTIME / "wasm" / "abi.json", PY_SRC / "abi.json")
+    shutil.copy2(RUNTIME / "wasm" / "game-reference.json", PY_SRC / "game-reference.json")
+    target = WEB / "runtime"
+    target.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(RUNTIME / "wasm" / "runtime.wasm", target / "runtime.wasm")
+    shutil.copy2(RUNTIME / "wasm" / "loader.mjs", target / "loader.mjs")
+
+
 def copy_metadata(manifest: dict) -> None:
     shutil.copy2(ROOT / "profiles" / "dune-us.json", PY_SRC / "profile.json")
+    game_reference = json.loads((RUNTIME / "wasm" / "game-reference.json").read_text())
+    abi_reference = json.loads((RUNTIME / "wasm" / "abi.json").read_text())
     reference = {
         "rom_sha256": json.loads((ROOT / "profiles" / "dune-us.json").read_text())["sha256"],
+        "abi_hash": abi_reference["abi_hash"],
+        "expected_game_sha256": game_reference["expected_game_sha256"],
+        "expected_game_bytes": game_reference["expected_game_bytes"],
+        "game_instructions": game_reference["instructions"],
+        "game_pages": game_reference["pages"],
         "runtime_sha256": manifest["runtime_sha256"],
         "recompiler": manifest.get("recompiler", "rearrakis@56c6a6da10+browser-overlay"),
         "window_title": manifest["window_title"],
@@ -97,6 +120,9 @@ def copy_metadata(manifest: dict) -> None:
         "expected_output_bytes": manifest["shipped_core_bytes"],
         "shipped_core": manifest.get("shipped_core_note", "dune-web.c prepared from the pinned ReArrakis baseline"),
     }
+    wasm_manifest = json.loads((RUNTIME / "wasm" / "manifest.json").read_text())
+    reference["runtime_sha256"] = wasm_manifest["wasm"]["sha256"]
+    reference["runtime_wasm_bytes"] = wasm_manifest["wasm"]["bytes"]
     (PY_SRC / "reference.json").write_text(json.dumps(reference, indent=2) + "\n")
     (WEB / "reference.json").write_text(json.dumps(reference, indent=2) + "\n")
     shutil.copy2(PY_SRC / "reference.json", ROOT / "runtime" / "reference.json")
@@ -131,6 +157,7 @@ def main() -> None:
     manifest = load_manifest()
     copy_recompiler()
     copy_runtime(manifest)
+    copy_wasm_assets()
     copy_metadata(manifest)
     if not args.skip_pyodide:
         copy_pyodide()

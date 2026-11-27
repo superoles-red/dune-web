@@ -40,7 +40,7 @@ async function readCachedCore(romSha) {
   try {
     const dir = await cacheDirectory(romSha, { create: false });
     const meta = JSON.parse(await (await dir.getFileHandle('meta.json')).getFile().then((f) => f.text()));
-    if (meta.runtime_sha256 !== reference.runtime_sha256 || meta.recompiler !== reference.recompiler) {
+    if (meta.abi_hash !== reference.abi_hash || meta.recompiler !== reference.recompiler) {
       return null;
     }
     return meta;
@@ -51,9 +51,9 @@ async function readCachedCore(romSha) {
 
 async function writeCachedCore(romSha, meta, coreBytes) {
   try {
-    progress('cache', 0.995, 'Кэширование ядра');
+    progress('cache', 0.995, 'Кэширование игры');
     const dir = await cacheDirectory(romSha, { create: true });
-    const handle = await dir.getFileHandle('core.c', { create: true });
+    const handle = await dir.getFileHandle('game.wasm', { create: true });
     const writable = await handle.createWritable();
     await writable.write(coreBytes);
     await writable.close();
@@ -100,10 +100,12 @@ async function build({ romBytes, force = false }) {
         ok: cached.matches_shipped_core,
         cached: true,
         rom_sha256: romSha,
-        output_sha256: cached.output_sha256,
-        output_bytes: cached.output_bytes,
-        expected_output_sha256: reference.expected_output_sha256,
-        expected_output_bytes: reference.expected_output_bytes,
+        game_sha256: cached.game_sha256,
+        game_bytes: cached.game_bytes,
+        output_sha256: cached.game_sha256,
+        output_bytes: cached.game_bytes,
+        expected_output_sha256: reference.expected_game_sha256,
+        expected_output_bytes: reference.expected_game_bytes,
         matches_shipped_core: cached.matches_shipped_core,
         timings: {},
         total_seconds: 0,
@@ -118,18 +120,18 @@ async function build({ romBytes, force = false }) {
   const result = JSON.parse(json);
 
   if (result.ok) {
-    progress('cache', 0.99, 'Сохранение результата в кэш');
-    const core = py.FS.readFile('/work/build/dune.c');
+    progress('cache', 0.99, 'Сохранение игры в память устройства');
+    const game = py.FS.readFile('/work/build/game.wasm');
     const meta = {
       rom_sha256: romSha,
-      runtime_sha256: reference.runtime_sha256,
+      abi_hash: reference.abi_hash,
       recompiler: reference.recompiler,
-      output_sha256: result.output_sha256,
-      output_bytes: result.output_bytes,
+      game_sha256: result.game_sha256,
+      game_bytes: result.game_bytes,
       matches_shipped_core: result.matches_shipped_core,
       built_at: new Date().toISOString(),
     };
-    await writeCachedCore(romSha, meta, core);
+    await writeCachedCore(romSha, meta, game);
   }
   post('result', { result });
 }

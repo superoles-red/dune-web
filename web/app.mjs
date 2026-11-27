@@ -26,6 +26,7 @@ const state = {
   building: false,
   result: null,
   reference: null,
+  host: null,
   log: [],
 };
 
@@ -33,9 +34,10 @@ const KNOWN_ROM_SHA256 = 'b1bbe73186e0902fa8b2db0f227bf306e3d6a80fe592f927d1aa9d
 
 // ---------- helpers ----------
 function screen(name) {
-  for (const id of ['screen-setup', 'screen-progress', 'screen-ready', 'screen-error']) {
+  for (const id of ['screen-setup', 'screen-progress', 'screen-ready', 'screen-error', 'screen-game']) {
     $(id).classList.toggle('hidden', id !== `screen-${name}`);
   }
+  document.body.classList.toggle('playing', name === 'game');
 }
 
 function log(line) {
@@ -186,7 +188,9 @@ function onResult(result) {
   $('detail-time').textContent = result.cached ? 'из памяти устройства' : fmtSeconds(result.total_seconds);
   log(`Готово: ${result.output_sha256} (${result.output_bytes} Б)${result.cached ? ' [кэш]' : ''}`);
   $('ready-title').textContent = result.cached ? 'Игра уже собрана' : 'Игра собрана';
-  $('ready-hint').textContent = 'Теперь её можно запускать. Кнопка «Играть» включится в следующем обновлении.';
+  $('ready-hint').textContent = 'Нажмите «Играть» — запустится оригинальная игра с вашего ROM.';
+  const play = $('play');
+  play.disabled = false;
   screen('ready');
 }
 
@@ -204,6 +208,104 @@ $('error-retry').addEventListener('click', () => {
 });
 
 $('rebuild').addEventListener('click', () => startBuild(true));
+
+// ---------- playing ----------
+async function readCachedGame() {
+  const root = await navigator.storage.getDirectory();
+  const rootDir = await root.getDirectoryHandle('dune-web', { create: false });
+  const romDir = await rootDir.getDirectoryHandle(`rom-${state.romSha}`, { create: false });
+  const file = await (await romDir.getFileHandle('game.wasm')).getFile();
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+function gameLoading(visible, text) {
+  $('game-loading').classList.toggle('hidden', !visible);
+  $('game-loading-text').textContent = text || 'Запускаем игру…';
+}
+
+async function startPlay() {
+  if (state.host || !state.romBytes) return;
+  screen('game');
+  gameLoading(true, 'Запускаем игру…');
+  try {
+    const gameBytes = await readCachedGame();
+    const { DuneHost } = await import('./host/host.mjs');
+    const host = new DuneHost({
+      canvas: $('game-canvas'),
+      runtimeUrl: './runtime/runtime.wasm',
+      log: (line) => log(`host: ${line}`),
+    });
+    state.host = host;
+    await host.init({ gameBytes });
+    await host.loadRomFromBytes(state.romBytes);
+    host.boot();
+    // Fast-forward the SEGA/Virgin title sequence and open the main menu, so the
+    // player lands on something interactive within a second instead of waiting
+    // through the 40-second intro at real time.
+    try {
+      host.advanceInstructions(26_000_000, { maxSteps: 300_000_000 });
+      host.pressStart({ holdSteps: 200_000, settleSteps: 100_000 });
+      host.drawFrame?.();
+    } catch (error) {
+      log(`fast-forward skipped: ${error.message}`);
+    }
+    host.start();
+    window.__DUNE_HOST = host;
+    gameLoading(false);
+    log(`Игра запущена: ${host.metrics?.instructions ?? 0} инструкций, кадры ${host.metrics?.renderedFrames ?? 0}`);
+    // Keep the screen awake during play where the API exists.
+    try { await navigator.wakeLock?.request?.('screen'); } catch { /* optional */ }
+  } catch (error) {
+    state.host = null;
+    gameLoading(true, 'Не удалось запустить игру');
+    log(`Ошибка запуска: ${error && error.stack ? error.stack : error}`);
+    setTimeout(() => {
+      screen('ready');
+      $('ready-hint').textContent = 'Запуск не удался на этом устройстве — подробности в «Подробностях».';
+    }, 1500);
+  }
+}
+
+function stopPlay() {
+  if (state.host) {
+    try { state.host.destroy(); } catch { /* ignore */ }
+    state.host = null;
+  }
+  window.__DUNE_HOST = null;
+  screen('ready');
+}
+
+$('play').addEventListener('click', startPlay);
+$('game-back').addEventListener('click', stopPlay);
+
+// On-screen pad: press on pointerdown, release on pointerup/cancel/leave.
+for (const button of document.querySelectorAll('[data-pad]')) {
+  const mask = Number(button.dataset.pad);
+  const press = (event) => { event.preventDefault(); state.host?.pad(mask, true); };
+  const release = (event) => { event.preventDefault(); state.host?.pad(mask, false); };
+  button.addEventListener('pointerdown', press);
+  button.addEventListener('pointerup', release);
+  button.addEventListener('pointercancel', release);
+  button.addEventListener('pointerleave', release);
+}
+
+// Keyboard: arrows + Z/X/C + Enter/Space map to the Sega pad.
+const KEY_MASKS = {
+  ArrowUp: 1, ArrowDown: 2, ArrowLeft: 4, ArrowRight: 8,
+  KeyZ: 64, KeyX: 16, KeyC: 32, Enter: 128, Space: 32,
+};
+window.addEventListener('keydown', (event) => {
+  const mask = KEY_MASKS[event.code];
+  if (!mask || !state.host) return;
+  event.preventDefault();
+  state.host.pad(mask, true);
+});
+window.addEventListener('keyup', (event) => {
+  const mask = KEY_MASKS[event.code];
+  if (!mask || !state.host) return;
+  event.preventDefault();
+  state.host.pad(mask, false);
+});
 
 // ---------- details ----------
 async function loadBuildInfo() {

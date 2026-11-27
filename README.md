@@ -17,8 +17,8 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
 1. Откройте [superoles-red.github.io/dune-web](https://superoles-red.github.io/dune-web/) в
    Chrome/Safari и нажмите «Выбрать ROM» — укажите свой
    `Dune - The Battle for Arrakis (USA).gen` (1 048 576 байт). Файл не покидает устройство.
-2. Дождитесь экрана «Игра собрана»: сборка идёт на устройстве (первый раз — минуты на телефоне,
-   повторная — из кэша).
+2. Дождитесь экрана «Игра собрана» и нажмите «Играть»: сборка идёт на устройстве (первый раз —
+   минуты на телефоне, повторная — из кэша). Откроется оригинальная игра.
 3. Кнопка «Сохранения» рядом: «Загрузить файл» принимает `*.dune-save.json` из старой версии
    (`FILES & OFFLINE` → `DOWNLOAD SAVE`), «Скачать файл» делает резервную копию.
 
@@ -46,11 +46,12 @@ supplies the ROM, and the Sega program is statically recompiled to WebAssembly i
   save API, диспетчеризация) — [docs/WASM-RUNTIME.md](docs/WASM-RUNTIME.md); эмиттер реальных
   страниц сверен с C-оракулом на 21 360 состояниях, 0 расхождений —
   [docs/WASM-EMITTER.md](docs/WASM-EMITTER.md).
-- **Интеграция модулей доказана:** сгенерированный `game.wasm` страницы `$013` исполняется
-  внутри `runtime.wasm` через его ABI-дескриптор — 15 600 случаев против C-оракула, 0
-  расхождений ([docs/WASM-INTEGRATION.md](docs/WASM-INTEGRATION.md)).
-- **Не готово:** полный `game.wasm` (все 48 страниц + Z80), браузерный воркер на WASM-пути
-  и игровая оболочка-рендер.
+- **Игра запускается в браузере из ROM:** полный `game.wasm` (48 страниц, 40 382 инструкции,
+  3 142 822 B, SHA `06ecc222…`) генерируется на устройстве Pyodide-эмиттером и исполняется в
+  `runtime.wasm` через браузерный хост — оригинальные меню, выбор дома и вступление на экране,
+  60 FPS ([docs/WASM-HOST.md](docs/WASM-HOST.md), [docs/WASM-FULL-MODULE.md](docs/WASM-FULL-MODULE.md)).
+- **Пока нет:** звука (Z80 не переведён) и тач-камеры в миссии (адаптеры требуют SDL-геометрии;
+  меню/дом/вступление управляются кнопками).
 
 ## Как запустить локально
 

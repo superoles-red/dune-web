@@ -24,3 +24,11 @@ runtime/reference.json
 # wasm prototype build products
 prototype/wasm/build/
 prototype/wasm/__pycache__/
+
+# generated runtime wasm served to the browser
+web/runtime/
+
+# generated copies of the emitter and ABI for the browser bundle
+web/py-src/wasm_emitter/
+web/py-src/abi.json
+web/py-src/game-reference.json
