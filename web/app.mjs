@@ -1,46 +1,221 @@
-// BYOP shell for Dune: The Battle for Arrakis (Sega Genesis, USA).
-// Flow: player ROM -> local SHA check -> recompile in a worker -> verify against
-// the shipped game core -> private OPFS cache. Saves stay compatible with the
-// old port (import old *.dune-save.json).
+// Dune — BYOP shell: three screens (choose ROM → build → ready), saves sheet,
+// and a collapsed "details" block for diagnostics. Built for phones first.
 
 const $ = (id) => document.getElementById(id);
 const romInput = $('rom-input');
-const buildButton = $('build');
-const statusEl = $('status');
-const progressWrap = $('progress-wrap');
-const progressBar = $('progress');
-const dumpBody = document.querySelector('#dump-table tbody');
-const resultCard = $('result-card');
-const resultBody = document.querySelector('#result-table tbody');
-const logEl = $('log');
-const logLines = [];
+const dropZone = $('drop');
+const ringValue = $('ring-value');
+const circumference = 364.4;
+
+const PHASES = {
+  pyodide: { target: 0.04, title: 'Загружаем инструменты', step: 0 },
+  unpack: { target: 0.08, title: 'Загружаем инструменты', step: 0 },
+  validate_rom: { target: 0.12, title: 'Проверяем файл', step: 1 },
+  z80_images: { target: 0.15, title: 'Проверяем файл', step: 1 },
+  entry_discovery: { target: 0.70, title: 'Ищем код игры', step: 2 },
+  translate_emit: { target: 0.96, title: 'Собираем игру', step: 3 },
+  hash_output: { target: 0.99, title: 'Проверяем результат', step: 4 },
+  cache_read: { target: 1.0, title: 'Берём из памяти устройства', step: 4 },
+  cache: { target: 1.0, title: 'Сохраняем на устройстве', step: 4 },
+};
+
+const state = {
+  romBytes: null,
+  romSha: null,
+  worker: null,
+  building: false,
+  result: null,
+  reference: null,
+  log: [],
+};
 
 const KNOWN_ROM_SHA256 = 'b1bbe73186e0902fa8b2db0f227bf306e3d6a80fe592f927d1aa9d60c0f335ba';
-const PHASE_LABELS = {
-  pyodide: 'Загрузка Pyodide',
-  unpack: 'Распаковка перекомпилятора',
-  validate_rom: 'Проверка ROM',
-  z80_images: 'Подготовка Z80-образов',
-  entry_discovery: 'Поиск точек входа (68000)',
-  translate_emit: 'Трансляция и генерация ядра',
-  hash_output: 'Проверка SHA-256',
-  cache: 'Кэширование',
-  cache_read: 'Чтение кэша',
-};
-// Overall progress: each phase occupies [from, to) of the bar.
-const PHASE_SPAN = {
-  pyodide: [0.0, 0.06], unpack: [0.06, 0.10], validate_rom: [0.10, 0.12],
-  z80_images: [0.12, 0.135], entry_discovery: [0.135, 0.68], translate_emit: [0.68, 0.97],
-  hash_output: [0.97, 0.99], cache: [0.99, 1.0], cache_read: [0.0, 1.0],
-};
 
-const state = { romBytes: null, romSha: null, worker: null, building: false, result: null, reference: null };
+// ---------- helpers ----------
+function screen(name) {
+  for (const id of ['screen-setup', 'screen-progress', 'screen-ready', 'screen-error']) {
+    $(id).classList.toggle('hidden', id !== `screen-${name}`);
+  }
+}
 
 function log(line) {
-  const stamp = new Date().toLocaleTimeString('ru-RU');
-  logLines.push(`[${stamp}] ${line}`);
-  logEl.textContent = `[${stamp}] ${line}\n` + logEl.textContent;
-  if (logEl.textContent.length > 60000) logEl.textContent = logEl.textContent.slice(0, 60000);
+  state.log.push(`[${new Date().toLocaleTimeString('ru-RU')}] ${line}`);
+  if (state.log.length > 400) state.log.shift();
+  $('detail-log').textContent = state.log.slice(-120).join('\n');
+}
+
+let progressCurrent = 0;
+let progressTarget = 0;
+let progressTimer = null;
+
+function paintPct(value) {
+  const pct = Math.max(0, Math.min(1, value));
+  ringValue.style.strokeDashoffset = String(circumference * (1 - pct));
+  $('pct').textContent = `${Math.round(pct * 100)}%`;
+}
+
+function creep() {
+  if (progressCurrent < progressTarget) {
+    progressCurrent = Math.min(progressTarget, progressCurrent + Math.max(0.003, (progressTarget - progressCurrent) * 0.08));
+  }
+  paintPct(progressCurrent);
+}
+
+function setPct(value) {
+  progressTarget = Math.max(0, Math.min(1, value));
+  if (progressCurrent > progressTarget) progressCurrent = progressTarget;
+  if (progressTimer) return;
+  progressTimer = setInterval(() => {
+    creep();
+    if (Math.abs(progressTarget - progressCurrent) < 0.001) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+  }, 120);
+}
+
+function setPhase(phase, fraction) {
+  const meta = PHASES[phase] || { target: 0.5, title: 'Готовим игру', step: 2 };
+  const target = Math.max(progressTarget, meta.target);
+  setPct(target);
+  $('progress-title').textContent = meta.title;
+  const steps = $('steps').children;
+  for (let i = 0; i < steps.length; i += 1) steps[i].classList.toggle('on', i <= meta.step);
+}
+
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function short(value) {
+  return value ? `${value.slice(0, 16)}…` : '—';
+}
+
+function fmtSeconds(seconds) {
+  if (seconds == null) return '—';
+  if (seconds < 1) return `${Math.round(seconds * 1000)} мс`;
+  return `${seconds.toFixed(seconds < 10 ? 1 : 0)} с`;
+}
+
+function bytesLabel(bytes) {
+  if (bytes == null) return '—';
+  return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} МиБ` : `${bytes} Б`;
+}
+
+// ---------- choosing a ROM ----------
+async function chooseRom(file) {
+  if (!file) return;
+  if (state.building) return;
+  if (file.size !== 1048576) {
+    showError(`Это не тот файл: нужно ровно 1 048 576 байт, а у вас ${file.size.toLocaleString('ru-RU')}.`);
+    return;
+  }
+  state.romBytes = new Uint8Array(await file.arrayBuffer());
+  state.romSha = await sha256Hex(state.romBytes);
+  $('detail-rom').textContent = `${short(state.romSha)} · ${bytesLabel(state.romBytes.length)} · ${file.name}`;
+  log(`ROM: ${file.name}, ${state.romBytes.length} Б, SHA-256 ${state.romSha}`);
+  if (state.romSha !== KNOWN_ROM_SHA256) {
+    showError('Этот дамп не поддерживается. Нужна USA-версия Dune: The Battle for Arrakis.');
+    return;
+  }
+  startBuild(false);
+}
+
+dropZone.addEventListener('dragenter', (event) => { event.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragover', (event) => event.preventDefault());
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', (event) => {
+  event.preventDefault();
+  dropZone.classList.remove('over');
+  chooseRom(event.dataTransfer?.files?.[0]);
+});
+romInput.addEventListener('change', () => chooseRom(romInput.files?.[0]));
+
+// ---------- worker ----------
+function ensureWorker() {
+  if (state.worker) return state.worker;
+  const worker = new Worker('./recompiler.worker.js', { type: 'module' });
+  worker.addEventListener('message', (event) => {
+    const message = event.data;
+    if (message.type === 'state') {
+      setPhase(message.phase, message.fraction);
+    } else if (message.type === 'log') {
+      log(message.line);
+    } else if (message.type === 'result') {
+      onResult(message.result);
+    } else if (message.type === 'error') {
+      log(message.message);
+      showError('Сборка не удалась. Попробуйте другой ROM.');
+    }
+  });
+  state.worker = worker;
+  return worker;
+}
+
+function startBuild(force) {
+  if (!state.romBytes || state.building) return;
+  state.building = true;
+  state.result = null;
+  progressCurrent = 0;
+  progressTarget = 0;
+  paintPct(0);
+  screen('progress');
+  setPhase('pyodide', 0.01);
+  $('progress-hint').textContent = 'Не закрывайте вкладку — сборка идёт на этом устройстве.';
+  const copy = state.romBytes.slice();
+  ensureWorker().postMessage({ type: 'build', romBytes: copy, force }, [copy.buffer]);
+}
+
+// ---------- result ----------
+function onResult(result) {
+  state.building = false;
+  state.result = result;
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  progressCurrent = 1;
+  paintPct(1);
+  (window.__BUILD_RESULTS ||= []).push(result);
+  if (!result.ok) {
+    log(`Результат: ${result.error || 'ошибка'} ${result.output_sha256 || ''}`);
+    showError(result.output_sha256
+      ? 'Собранное ядро не совпало с эталоном — подробности в «Подробностях».'
+      : 'Не удалось собрать игру. Попробуйте другой ROM.');
+    return;
+  }
+  $('detail-core').textContent = `${short(result.output_sha256)} · ${bytesLabel(result.output_bytes)}${result.cached ? ' · из кэша' : ''}`;
+  $('detail-time').textContent = result.cached ? 'из памяти устройства' : fmtSeconds(result.total_seconds);
+  log(`Готово: ${result.output_sha256} (${result.output_bytes} Б)${result.cached ? ' [кэш]' : ''}`);
+  $('ready-title').textContent = result.cached ? 'Игра уже собрана' : 'Игра собрана';
+  $('ready-hint').textContent = 'Теперь её можно запускать. Кнопка «Играть» включится в следующем обновлении.';
+  screen('ready');
+}
+
+function showError(text) {
+  state.building = false;
+  $('error-text').textContent = text;
+  screen('error');
+  log(`Ошибка: ${text}`);
+}
+
+$('error-retry').addEventListener('click', () => {
+  screen('setup');
+  romInput.value = '';
+  romInput.click();
+});
+
+$('rebuild').addEventListener('click', () => startBuild(true));
+
+// ---------- details ----------
+async function loadBuildInfo() {
+  try {
+    const response = await fetch('./reference.json', { cache: 'no-store' });
+    if (!response.ok) return;
+    state.reference = await response.json();
+    $('detail-version').textContent =
+      `runtime ${short(state.reference.runtime_sha256)} · recompiler ${state.reference.recompiler || '—'}`;
+  } catch {
+    // metadata is optional for the fallback pages
+  }
 }
 
 function downloadText(filename, text) {
@@ -53,7 +228,7 @@ function downloadText(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-function saveLog() {
+function downloadReport() {
   const report = {
     generatedAt: new Date().toISOString(),
     userAgent: navigator.userAgent,
@@ -65,250 +240,80 @@ function saveLog() {
     romSha256: state.romSha,
     results: window.__BUILD_RESULTS ?? [],
     errors: window.__BUILD_ERRORS ?? [],
-    lines: logLines,
+    lines: state.log,
   };
-  downloadText('dune-byop-report.json', JSON.stringify(report, null, 2) + '\n');
+  downloadText('dune-report.json', JSON.stringify(report, null, 2) + '\n');
 }
+$('download-log').addEventListener('click', downloadReport);
 
-function setStatus(text) { statusEl.textContent = text; }
+// ---------- saves ----------
+let savesModule = null;
+let campaignStore = null;
 
-async function loadBuildInfo() {
-  try {
-    const response = await fetch('./reference.json', { cache: 'no-store' });
-    if (!response.ok) return;
-    state.reference = await response.json();
-    const short = (value) => (value ? value.slice(0, 16) + '…' : '—');
-    $('build-info').textContent =
-      `Версия сборки: runtime ${short(state.reference.runtime_sha256)} · ` +
-      `core ${short(state.reference.expected_output_sha256)} · ` +
-      `recompiler ${state.reference.recompiler || '—'}`;
-  } catch {
-    // The bundle metadata is optional for the saves panel; ignore failures.
-  }
-}
-
-async function clearCache() {
-  if (!state.romSha) return;
-  try {
-    const root = await navigator.storage.getDirectory();
-    const rootDir = await root.getDirectoryHandle('dune-web', { create: false });
-    await rootDir.removeEntry(`rom-${state.romSha}`, { recursive: true });
-    setStatus('Собранное ядро удалено из кэша. Следующая сборка начнётся заново.');
-    log(`Кэш для ROM ${state.romSha.slice(0, 16)}… удалён`);
-  } catch (error) {
-    setStatus(`Не удалось очистить кэш: ${error.message}`);
-  }
-}
-
-function row(table, label, value, className) {
-  const tr = document.createElement('tr');
-  const th = document.createElement('td');
-  th.textContent = label;
-  const td = document.createElement('td');
-  if (className) td.className = className;
-  td.textContent = value;
-  tr.append(th, td);
-  table.append(tr);
-}
-
-function fmtBytes(bytes) {
-  if (bytes == null) return '—';
-  return `${bytes} Б (${(bytes / 1048576).toFixed(1)} МиБ)`;
-}
-
-function fmtSeconds(seconds) {
-  if (seconds == null) return '—';
-  return seconds >= 10 ? `${seconds.toFixed(1)} с` : `${seconds.toFixed(2)} с`;
-}
-
-async function sha256Hex(bytes) {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function setProgress(phase, fraction) {
-  const span = PHASE_SPAN[phase] || [0, 1];
-  const overall = Math.max(0, Math.min(1, span[0] + (span[1] - span[0]) * fraction));
-  progressWrap.hidden = false;
-  progressBar.style.width = `${(overall * 100).toFixed(1)}%`;
-}
-
-function showDump() {
-  dumpBody.replaceChildren();
-  if (!state.romBytes) return;
-  row(dumpBody, 'Файл', romInput.files[0]?.name || '—');
-  row(dumpBody, 'Размер', fmtBytes(state.romBytes.length));
-  row(dumpBody, 'SHA-256', state.romSha);
-  const known = state.romSha === KNOWN_ROM_SHA256;
-  row(dumpBody, 'Паспорт дампа', known
-    ? 'Dune: The Battle for Arrakis (USA) — поддерживается, полный режим'
-    : 'Не совпадает с эталонным USA-дампом — сборка остановится', known ? 'ok' : 'bad');
-}
-
-romInput.addEventListener('change', async () => {
-  const file = romInput.files?.[0];
-  if (!file) return;
-  state.romBytes = new Uint8Array(await file.arrayBuffer());
-  state.romSha = await sha256Hex(state.romBytes);
-  state.result = null;
-  resultCard.hidden = true;
-  showDump();
-  const known = state.romSha === KNOWN_ROM_SHA256;
-  buildButton.disabled = state.building || !known;
-  setStatus(known ? 'ROM принят. Нажмите «Собрать ядро».' : 'Этот дамп не поддерживается: нужен USA 1 048 576 байт.');
-  log(`ROM: ${file.name}, ${state.romBytes.length} Б, SHA-256 ${state.romSha}`);
-});
-
-function ensureWorker() {
-  if (state.worker) return state.worker;
-  const worker = new Worker('./recompiler.worker.js', { type: 'module' });
-  worker.addEventListener('message', (event) => {
-    const message = event.data;
-    if (message.type === 'state') {
-      setProgress(message.phase, message.fraction);
-      setStatus(`${PHASE_LABELS[message.phase] || message.phase}…`);
-    } else if (message.type === 'log') {
-      log(message.line);
-    } else if (message.type === 'rom') {
-      log(`Worker подтвердил ROM SHA-256 ${message.romSha256}`);
-    } else if (message.type === 'result') {
-      onResult(message.result);
-    } else if (message.type === 'error') {
-      onBuildError(message.message);
-    }
-  });
-  state.worker = worker;
-  return worker;
-}
-
-function build() {
-  if (!state.romBytes || state.building) return;
-  state.building = true;
-  buildButton.disabled = true;
-  resultCard.hidden = true;
-  progressWrap.hidden = false;
-  progressBar.style.width = '0%';
-  setStatus('Запуск перекомпилятора…');
-  ensureWorker();
-  const copy = state.romBytes.slice();
-  state.worker.postMessage({ type: 'build', romBytes: copy }, [copy.buffer]);
-}
-
-async function measureMemory() {
-  if (!(self.crossOriginIsolated && performance.measureUserAgentSpecificMemory)) return null;
-  try {
-    return (await performance.measureUserAgentSpecificMemory()).bytes;
-  } catch {
-    return null;
-  }
-}
-
-async function onResult(result) {
-  state.building = false;
-  buildButton.disabled = false;
-  state.result = result;
-  (window.__BUILD_RESULTS ||= []).push(result);
-  progressBar.style.width = '100%';
-  resultCard.hidden = false;
-  resultBody.replaceChildren();
-  const verdict = result.matches_shipped_core
-    ? (result.cached ? 'СОВПАДАЕТ с эталонным ядром (из кэша)' : 'СОВПАДАЕТ с эталонным ядром')
-    : 'НЕ СОВПАЛО с эталоном';
-  row(resultBody, 'Вердикт', verdict, result.matches_shipped_core ? 'ok' : 'bad');
-  row(resultBody, 'SHA-256 ядра', result.output_sha256 || result.error || '—');
-  row(resultBody, 'SHA-256 эталона', result.expected_output_sha256 || '—');
-  row(resultBody, 'Размер ядра', result.output_bytes != null ? fmtBytes(result.output_bytes) : '—');
-  row(resultBody, 'ROM SHA-256', result.rom_sha256 || state.romSha || '—');
-  for (const [name, seconds] of Object.entries(result.timings || {})) {
-    row(resultBody, `Фаза: ${name}`, fmtSeconds(seconds));
-  }
-  row(resultBody, 'Всего', result.cached ? 'из кэша' : fmtSeconds(result.total_seconds));
-  const memory = await measureMemory();
-  if (memory != null) row(resultBody, 'Память страницы', fmtBytes(memory));
-  setStatus(result.matches_shipped_core
-    ? 'Готово: ядро собрано из вашего ROM и совпало с эталоном. Копия сохранена на устройстве.'
-    : 'Сборка завершилась, но SHA не совпал с эталоном — подробности ниже.');
-  log(`Результат: ${result.output_sha256} (${result.output_bytes} Б)`);
-}
-
-function onBuildError(message) {
-  state.building = false;
-  buildButton.disabled = false;
-  setStatus('Сборка не удалась.');
-  (window.__BUILD_ERRORS ||= []).push(message);
-  log(message);
-}
-
-buildButton.addEventListener('click', build);
-$('clear-cache').addEventListener('click', clearCache);
-$('download-log').addEventListener('click', saveLog);
-loadBuildInfo();
-log(`Платформа: ${navigator.userAgent}`);
-
-// --- Saves: old port (<dune-sega-web>) file import/export -------------------
 async function initSaves() {
   const fileInput = $('save-file');
-  const importButton = $('save-import');
-  const exportButton = $('save-export');
-  const saveStatus = $('save-status');
+  $('open-saves').addEventListener('click', () => $('saves-sheet').classList.remove('hidden'));
+  $('saves-close').addEventListener('click', () => $('saves-sheet').classList.add('hidden'));
+  $('saves-sheet').addEventListener('click', (event) => {
+    if (event.target === $('saves-sheet')) $('saves-sheet').classList.add('hidden');
+  });
   try {
-    const saves = await import('./saves/save-files.mjs');
+    savesModule = await import('./saves/save-files.mjs');
     const campaign = await import('./saves/campaign-state.mjs');
     const files = await import('./saves/browser-files.mjs');
-    const store = new campaign.CampaignStore(localStorage);
+    campaignStore = new campaign.CampaignStore(localStorage);
 
-    function describe(progress, current) {
+    const describe = (progress, current) => {
       const houses = ['HARKONNEN', 'ATREIDES', 'ORDOS'];
-      const parts = [];
-      if (current) parts.push(`текущая миссия: ${houses[current.house]} ${current.mission}`);
-      for (let h = 0; h < 3; h += 1) {
-        const p = progress.houses[h];
-        if (p.unlocked > 1 || p.completed.length) parts.push(`${houses[h]}: открыто ${p.unlocked}/9, пройдено ${p.completed.length}`);
-      }
-      return parts.length ? parts.join(' · ') : 'прогресс пуст';
-    }
+      if (current) return `${houses[current.house]} · миссия ${current.mission}`;
+      const played = progress.houses.reduce((acc, h) => acc + h.completed.length, 0);
+      return played ? `прогресс: ${played} миссий` : 'сохранений пока нет';
+    };
+    const refresh = () => {
+      $('saves-status').textContent = campaignStore.current
+        ? `В браузере: ${describe(campaignStore.progress, campaignStore.current)}`
+        : 'Здесь можно перенести сохранение из старой версии.';
+      $('save-download').disabled = !campaignStore.current;
+    };
+    refresh();
 
-    const legacy = store.legacy();
-    if (store.current || store.progress.houses.some((h) => h.unlocked > 1 || h.completed.length)) {
-      saveStatus.textContent = `В браузере уже есть сохранение: ${describe(store.progress, store.current)}`;
-      exportButton.disabled = false;
-    } else if (legacy) {
-      saveStatus.textContent = 'Найден старый формат сохранения в localStorage — импортируйте файл или продолжите в старой версии.';
-    } else {
-      saveStatus.textContent = 'Сохранений в этом браузере нет. Можно импортировать файл из старой версии.';
-    }
-
-    fileInput.addEventListener('change', () => {
-      importButton.disabled = !fileInput.files?.[0];
-    });
-
-    importButton.addEventListener('click', async () => {
+    $('save-load').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
       const file = fileInput.files?.[0];
       if (!file) return;
       try {
-        const archive = await saves.parseSaveFile(await file.text());
-        const transaction = saves.commitSaveFile({ store, archive });
-        saveStatus.textContent = `Импортировано: ${describe(transaction.progress, transaction.continue)}. Язык: ${transaction.language}.`;
-        exportButton.disabled = false;
+        const archive = await savesModule.parseSaveFile(await file.text());
+        const transaction = savesModule.commitSaveFile({ store: campaignStore, archive });
+        $('saves-status').textContent = `Загружено: ${describe(transaction.progress, transaction.continue)}`;
         log(`Сейв импортирован из ${file.name}`);
+        refresh();
       } catch (error) {
-        saveStatus.textContent = `Импорт не удался: ${error.code || error.message}`;
+        $('saves-status').textContent = error.code === 'incompatible-engine'
+          ? 'Файл от другой сборки игры.'
+          : 'Файл повреждён или не подходит.';
         log(`Ошибка импорта сейва: ${error.code || error.message}`);
+      } finally {
+        fileInput.value = '';
       }
     });
-
-    exportButton.addEventListener('click', async () => {
+    $('save-download').addEventListener('click', async () => {
       try {
-        const file = await saves.createSaveFile({ store, language: 'ru' });
-        await files.downloadSave(file);
-        saveStatus.textContent = `Экспортировано: ${file.filename}`;
+        const save = await savesModule.createSaveFile({ store: campaignStore, language: 'ru' });
+        await files.downloadSave(save);
+        $('saves-status').textContent = 'Файл сохранения скачан.';
       } catch (error) {
-        saveStatus.textContent = `Экспорт не удался: ${error.code || error.message}`;
+        $('saves-status').textContent = 'Не удалось скачать сохранение.';
       }
     });
   } catch (error) {
-    saveStatus.textContent = `Подсистема сохранений пока не собрана (${error.message}).`;
+    $('saves-status').textContent = 'Сохранения пока недоступны.';
+    log(`Saves module unavailable: ${error.message}`);
   }
 }
 
+// ---------- start ----------
+for (let i = 0; i < 5; i += 1) $('steps').append(document.createElement('i'));
+loadBuildInfo();
 initSaves();
+log(`Платформа: ${navigator.userAgent}`);
+window.__SPIKE_READY__ = true;

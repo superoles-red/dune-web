@@ -87,12 +87,12 @@ async function ensurePyodide() {
   return pyodide;
 }
 
-async function build({ romBytes }) {
+async function build({ romBytes, force = false }) {
   await loadReference();
   const romSha = await sha256Hex(romBytes);
   post('rom', { romSha256: romSha, romBytes: romBytes.length });
 
-  const cached = await readCachedCore(romSha);
+  const cached = force ? null : await readCachedCore(romSha);
   if (cached) {
     progress('cache_read', 1, 'Найдено собранное ядро в кэше');
     post('result', {

@@ -55,7 +55,8 @@ function parseArgs(argv) {
     const key = argv[i];
     if (!key.startsWith('--')) fail(`unexpected argument ${key}`);
     const name = key.slice(2);
-    if (name === 'verify-only' || name === 'no-machine-smoke') {
+    if (name === 'verify-only' || name === 'no-machine-smoke'
+      || name === 'no-z80-smoke') {
       args[name] = true;
       continue;
     }
@@ -248,21 +249,30 @@ for (const name of ['translated_step', 'warmup_all', 'translated_step_via_table'
 }
 if (!game.exports.__indirect_function_table) fail('game.wasm has no funcref table');
 checks.game_exports = Object.keys(game.exports).sort();
+checks.game_z80_export = typeof game.exports.translated_z80_step === 'function';
 
 /* ---------------------------------------------------- funcref table + dispatch -- */
-const slots = loader.appendFunctions(rt, [game.exports.translated_step]);
-const mode = loader.installGameTable(rt, [slots[0], 0]);
+// Full modules export the honest translated_z80_step stub; page modules do not.
+// The runtime's single-dispatcher mode stores [translated_step, z80_step].
+const gameFunctions = [game.exports.translated_step];
+if (checks.game_z80_export) gameFunctions.push(game.exports.translated_z80_step);
+const slots = loader.appendFunctions(rt, gameFunctions);
+const z80Slot = checks.game_z80_export ? slots[1] : 0;
+const mode = loader.installGameTable(rt, [slots[0], z80Slot]);
 const table = loader.gameTableView(rt);
 checks.game_table_mode = mode;
 checks.game_table_mode_ok = mode === loader.ABI.dispatch.modeSingle;
 checks.game_table_slot = slots[0];
 checks.game_table_slot_ok = table[0] === slots[0];
+checks.game_z80_slot = z80Slot;
+checks.game_z80_slot_ok = !checks.game_z80_export || table[1] === z80Slot;
 checks.game_indirect_table_ok =
   game.exports.__indirect_function_table.get(0) === game.exports.translated_step;
 if (!checks.game_table_mode_ok) {
   fail(`runtime game mode is ${mode}, expected SINGLE (${loader.ABI.dispatch.modeSingle})`);
 }
 if (!checks.game_table_slot_ok) fail('runtime page table slot 0 is not the game translated_step');
+if (!checks.game_z80_slot_ok) fail('runtime page table slot 1 is not the game translated_z80_step');
 if (!checks.game_indirect_table_ok) fail('game __indirect_function_table[0] != translated_step');
 
 const warmupStarted = process.hrtime.bigint();
@@ -449,6 +459,38 @@ if (!args['verify-only']) {
   if (unknownFaults) fail(`${unknownFaults} fault(s) could not be classified`);
 }
 
+/* ----------------------------------------------------- z80 stub link smoke -- */
+// The full module's translated_z80_step must report the canonical UNTRANSLATED
+// failure (Z80 translation is out of scope), never a fake success.
+let z80Smoke = null;
+if (!args['verify-only'] && !args['no-z80-smoke'] && checks.game_z80_export) {
+  resetCpuFields();
+  const ram = new Uint8Array(rt.memory.buffer, RAM, RAM_SIZE);
+  ram.fill(0);
+  const view = new DataView(rt.memory.buffer);
+  const z80pc = 0x1234;
+  view.setUint32(CPU + cpuABI.z80_cpu + cpuABI.z80cpu_pc, z80pc, true);
+  const cycles = rt.exports.dune_rt_translated_z80_step(CPU);
+  const classified = classifyFault();
+  const after = new DataView(rt.memory.buffer);
+  const expected = meta.fail_codes ? meta.fail_codes.untranslated_canonical : 1;
+  z80Smoke = {
+    cycles,
+    fault: after.getUint32(CPU + cpuABI.fault, true),
+    fault_code: classified.code,
+    fault_reason: classified.reason,
+    expected_fault_code: expected,
+    z80_pc: z80pc,
+  };
+  z80Smoke.ok = z80Smoke.fault !== 0 && z80Smoke.cycles === 0
+    && z80Smoke.fault_code === expected
+    && after.getUint32(CPU + cpuABI.z80_cpu + cpuABI.z80cpu_pc, true) === z80pc;
+  checks.z80_stub_smoke = z80Smoke;
+  if (!z80Smoke.ok) {
+    fail(`game translated_z80_step stub smoke failed: ${JSON.stringify(z80Smoke)}`);
+  }
+}
+
 /* --------------------------------------------------- machine_step link smoke -- */
 let machineSmoke = null;
 if (!args['verify-only'] && !args['no-machine-smoke'] && romBytes) {
@@ -502,8 +544,9 @@ const report = {
   game: {
     sha256: checks.game_wasm_sha256,
     bytes: checks.game_wasm_bytes,
-    page: meta.page,
-    instructions: meta.instructions ? meta.instructions.length : null,
+    page: meta.page ?? null,
+    instructions: meta.instruction_count
+      ?? (meta.instructions ? meta.instructions.length : null),
   },
   link: {
     imports: importChecks,
@@ -511,6 +554,10 @@ const report = {
     memory_identity: checks.memory_identity,
     game_table_mode: checks.game_table_mode,
     game_table_slot: checks.game_table_slot,
+    game_z80_export: checks.game_z80_export,
+    game_z80_slot: checks.game_z80_slot,
+    game_z80_slot_ok: checks.game_z80_slot_ok,
+    z80_stub_smoke: z80Smoke,
     game_table_mode_ok: checks.game_table_mode_ok,
     game_indirect_table_ok: checks.game_indirect_table_ok,
     game_via_table_smoke: checks.game_via_table_smoke,

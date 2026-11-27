@@ -697,14 +697,17 @@ def game_import_names(helper_prefix: str) -> List[str]:
 
 
 def verify_game_module(info, runtime_export_names: Iterable[str],
-                       helper_prefix: str = "dune_") -> dict:
+                       helper_prefix: str = "dune_",
+                       expected_exports: Optional[Sequence[str]] = None) -> dict:
     """Check that a generated module is the runtime's expected game side.
 
     * imports are exactly ``env.memory`` + the 16 runtime helper functions, and
       every helper is an export of ``runtime.wasm``;
     * the module defines no memory, no globals and carries no data segments
       (i.e. it cannot smuggle ROM/RAM content into the artifact);
-    * exports are exactly the four documented game-side symbols.
+    * exports are exactly ``expected_exports`` (default: the four page-module
+      symbols; the full module passes five, incl. the ``translated_z80_step``
+      stub).
     """
     problems: List[str] = []
     exports_available = set(runtime_export_names)
@@ -746,9 +749,10 @@ def verify_game_module(info, runtime_export_names: Iterable[str],
         problems.append("expected one element segment, found %d"
                         % info.element_segments)
     export_names = [entry.name for entry in info.exports]
-    if sorted(export_names) != sorted(EXPECTED_GAME_EXPORTS):
+    expected = tuple(expected_exports or EXPECTED_GAME_EXPORTS)
+    if sorted(export_names) != sorted(expected):
         problems.append("exports are %r, expected %r"
-                        % (export_names, list(EXPECTED_GAME_EXPORTS)))
+                        % (export_names, list(expected)))
     if problems:
         raise RuntimeAbiError("generated game.wasm rejected:\n  - "
                               + "\n  - ".join(problems))

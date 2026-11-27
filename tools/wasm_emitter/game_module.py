@@ -366,40 +366,69 @@ class ModuleBuilder:
         vcode.return_()
         return step, warmup, via
 
+    def emit_z80_stub(self) -> Func:
+        """``translated_z80_step(c) -> i32``: honest UNTRANSLATED stub.
+
+        Z80 translation is out of scope for the 68000 full module.  The runtime
+        installs this export as the single-dispatcher z80 slot (``table[1]``) and
+        calls it only when the Z80 scheduler is active.  It reports the canonical
+        UNTRANSLATED failure at the Z80 PC and returns 0 cycles, exactly like the
+        runtime's own "no z80 handler" path -- never a fake success.
+        """
+        func = self.module.declare_func([I32], [I32])
+        code = func.code
+        code.local_get(0)
+        code.i32_const(self.emitted_fail_code(abi.FAIL_UNTRANSLATED))
+        code.local_get(0)
+        code.i32_load(offset=self.abi.z80_cpu + self.abi.z80cpu_pc)
+        code.call(self.imports["fail"])
+        code.i32_const(0)
+        code.return_()
+        return func
+
     def build(self, handlers_by_page: Dict[int, Dict[int, object]],
-              variants: Optional[Dict[int, list]] = None) -> Tuple[bytes, dict]:
+              variants: Optional[Dict[int, list]] = None,
+              z80_stub: bool = False) -> Tuple[bytes, dict]:
         started = time.perf_counter()
         self.variants = variants or {}
         for page in sorted(handlers_by_page):
             self.emit_page(page, handlers_by_page[page])
         step, warmup, via = self.emit_extras()
+        z80 = self.emit_z80_stub() if z80_stub else None
         self.module.define_table(1, 1)
         self.module.element_funcs([step.index])
         self.module.export_func("translated_step", step.index)
         self.module.export_func("translated_step_via_table", via.index)
         self.module.export_func("warmup_all", warmup.index)
+        exports = [
+            "translated_step",
+            "translated_step_via_table",
+            "warmup_all",
+            "__indirect_function_table",
+        ]
+        if z80 is not None:
+            self.module.export_func("translated_z80_step", z80.index)
+            exports.append("translated_z80_step")
         self.module.export_table("__indirect_function_table")
         data = self.module.build()
         elapsed = (time.perf_counter() - started) * 1000.0
         used_codes = sorted(self.fail_codes_used | self.translator.fail_codes_used)
+        functions = {
+            "pages": len(self.page_funcs),
+            "translated_step": step.index,
+            "warmup_all": warmup.index,
+            "translated_step_via_table": via.index,
+        }
+        if z80 is not None:
+            functions["translated_z80_step"] = z80.index
         return data, {
             "generation_ms": round(elapsed, 3),
-            "functions": {
-                "pages": len(self.page_funcs),
-                "translated_step": step.index,
-                "warmup_all": warmup.index,
-                "translated_step_via_table": via.index,
-            },
+            "functions": functions,
             "imports": [self.helper_prefix + name for name, _, _ in abi.HELPERS],
             "helper_prefix": self.helper_prefix,
             "fail_code_map": {str(key): value for key, value in sorted(self.fail_code_map.items())},
             "fail_codes_used": used_codes,
-            "exports": [
-                "translated_step",
-                "translated_step_via_table",
-                "warmup_all",
-                "__indirect_function_table",
-            ],
+            "exports": exports,
         }
 
 
@@ -432,12 +461,17 @@ def _module_metrics(data: bytes, skeleton: bytes, meta: dict, instruction_count:
 def build_module(program, instructions, abi_desc: abi.CpuAbi,
                  memory: abi.MemoryLayout, page: Optional[int] = None,
                  label: str = "", helper_prefix: str = "",
-                 fail_code_map: Optional[Dict[int, int]] = None) -> Tuple[bytes, dict]:
+                 fail_code_map: Optional[Dict[int, int]] = None,
+                 z80_stub: bool = False,
+                 instruction_meta: bool = True) -> Tuple[bytes, dict]:
     """Build a module for a set of real decoded instructions.
 
     ``program`` supplies the ROM bytes and the RAM-variant table; ``instructions``
-    is any iterable of decoded ``Instruction`` objects (one page, or a coverage
-    selection across pages).
+    is any iterable of decoded ``Instruction`` objects (one page, or the whole
+    program for the full module).  ``z80_stub=True`` adds the honest
+    ``translated_z80_step`` UNTRANSLATED stub used by the all-page module.
+    ``instruction_meta=False`` keeps per-instruction disassembly out of the meta
+    (the full module's 40 382 entries would add ~5 MiB of redundant JSON).
     """
     selected = _public_instructions(program, instructions)
     if not selected:
@@ -448,13 +482,17 @@ def build_module(program, instructions, abi_desc: abi.CpuAbi,
         if inst.pc in program.ram_variants:
             variants[inst.pc] = program.ram_variants[inst.pc]
     builder = ModuleBuilder(abi_desc, memory, program.rom, helper_prefix, fail_code_map)
-    data, build_meta = builder.build(handlers, variants)
+    data, build_meta = builder.build(handlers, variants, z80_stub=z80_stub)
     # Skeleton: identical page/dispatch structure but no handler bodies.
     skeleton_builder = ModuleBuilder(abi_desc, memory, program.rom, helper_prefix,
                                      fail_code_map)
     skeleton, _ = skeleton_builder.build(
-        {pg: {} for pg in handlers}, {}
+        {pg: {} for pg in handlers}, {}, z80_stub=z80_stub
     )
+    page_counts: Dict[str, int] = {}
+    for inst in selected:
+        key = str(page_of(inst.pc))
+        page_counts[key] = page_counts.get(key, 0) + 1
     meta = {
         "format": "dune-game-wasm/1",
         "label": label,
@@ -472,11 +510,14 @@ def build_module(program, instructions, abi_desc: abi.CpuAbi,
             "ram_page_count": RAM_PAGE_COUNT,
             "warmup_pc": WARMUP_PC,
         },
-        "instructions": [_instruction_meta(inst) for inst in selected],
+        "instruction_count": len(selected),
+        "page_instruction_counts": dict(sorted(page_counts.items(), key=lambda kv: int(kv[0]))),
         "pages": sorted(handlers),
         "ram_variant_pcs": sorted(variants),
         "build": build_meta,
     }
+    if instruction_meta:
+        meta["instructions"] = [_instruction_meta(inst) for inst in selected]
     _module_metrics(data, skeleton, meta, len(selected))
     return data, meta
 

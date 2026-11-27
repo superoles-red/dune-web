@@ -67,9 +67,8 @@ try {
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.message}`));
 
   await page.goto(URL, { waitUntil: 'load', timeout: 60000 });
+  // The shell auto-starts the build as soon as a ROM is chosen.
   await page.setInputFiles('#rom-input', ROM);
-  await page.waitForFunction(() => document.querySelector('#build') && !document.querySelector('#build').disabled, null, { timeout: 60000 });
-  await page.click('#build');
   const waitResults = (count) => page.waitForFunction(
     (n) => (window.__BUILD_RESULTS?.length || 0) >= n || (window.__BUILD_ERRORS?.length || 0) > 0,
     count, { timeout: TIMEOUT_MS, polling: 1000 },
@@ -78,9 +77,11 @@ try {
   const first = await page.evaluate(() => window.__BUILD_RESULTS?.[0] ?? null);
   if (!first) throw new Error(`no result from the first build: ${JSON.stringify(await page.evaluate(() => window.__BUILD_ERRORS))}`);
 
-  await page.click('#build');
-  await waitResults(2);
-  const second = await page.evaluate(() => window.__BUILD_RESULTS?.[1] ?? null);
+  // Reload and pick the same ROM again: the OPFS cache must answer instantly.
+  await page.reload({ waitUntil: 'load' });
+  await page.setInputFiles('#rom-input', ROM);
+  await waitResults(1);
+  const second = await page.evaluate(() => window.__BUILD_RESULTS?.[0] ?? null);
 
   await page.screenshot({ path: path.join(RESULT_DIR, 'smoke.png'), fullPage: true });
   const report = { first, second, logs };
