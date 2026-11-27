@@ -17,6 +17,8 @@ EXTRA_TYPES = {
     ".json": "application/json",
     ".txt": "text/plain; charset=utf-8",
     ".py": "text/plain; charset=utf-8",
+    ".webmanifest": "application/manifest+json",
+    ".png": "image/png",
 }
 
 

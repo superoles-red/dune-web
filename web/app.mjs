@@ -804,4 +804,38 @@ for (let i = 0; i < 5; i += 1) $('steps').append(document.createElement('i'));
 loadBuildInfo();
 initSaves();
 log(`Платформа: ${navigator.userAgent}`);
+// Install to the home screen (Chrome/Edge; iOS uses the share menu).
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  $('install-app')?.classList.remove('hidden');
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  $('install-app')?.classList.add('hidden');
+  log('Приложение установлено');
+});
+$('install-app')?.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try {
+    await installPrompt.userChoice;
+  } catch {
+    /* the user dismissed the prompt */
+  }
+  installPrompt = null;
+  $('install-app')?.classList.add('hidden');
+});
+
+// Offline: cache the wrapper/runtime/pyodide after the first visit. The ROM is
+// read from a local File and the generated game.wasm lives in OPFS, so the
+// second visit (even offline) only needs the cached shell.
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+  navigator.serviceWorker.register('./sw.js', { scope: './' }).then((registration) => {
+    log('Офлайн-режим готов: оболочка и рантайм кэшируются');
+    registration.update?.().catch(() => {});
+  }).catch((error) => log(`Офлайн-режим недоступен: ${error.message}`));
+}
+
 window.__SPIKE_READY__ = true;

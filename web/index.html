@@ -4,7 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#120d08">
-<link rel="icon" href="data:,">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DUNE">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" href="./icons/icon-192.png">
 <title>Dune</title>
 <style>
   :root {
@@ -208,6 +214,7 @@
       </button>
     </div>
     <button class="btn ghost hidden" id="new-game">Новая игра</button>
+    <button class="btn ghost small hidden" id="install-app" style="width:100%">Установить на телефон</button>
     <button class="btn ghost small" id="open-saves" style="width:100%">Сохранения</button>
   </section>
 
