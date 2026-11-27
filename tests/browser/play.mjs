@@ -142,6 +142,43 @@ try {
   if (audio.enabled && !(audio.stats?.frames > 0)) note('audio pipeline produced no frames');
   if (!(stats.canvasNonBlack > 5000)) note('mission map frame looks blank');
 
+  // In-game HUD: selecting an own building exposes the original context action
+  // (REPEAT here) and CLEAR; pressing it must reach the native B handler.
+  const hudBox = await page.locator('#game-canvas').boundingBox();
+  await page.mouse.click(hudBox.x + hudBox.width / 2, hudBox.y + hudBox.height / 2);
+  await page.waitForTimeout(700);
+  const hud = await page.evaluate(() => {
+    const host = window.__DUNE_HOST;
+    const read = (name) => { const p = host.call(name); const b = new Uint8Array(host.memory.buffer, p); let e = 0; while (e < b.length && b[e]) e += 1; return JSON.parse(new TextDecoder().decode(b.subarray(0, e))); };
+    const actions = read('dune_web_actions_debug');
+    return {
+      hidden: document.getElementById('game-hud').hidden,
+      label: document.getElementById('hud-b').textContent,
+      bHidden: document.getElementById('hud-b').hidden,
+      selected: actions.selected?.kind,
+      bKind: actions.bKind,
+      nativeBCount: actions.nativeBCount,
+    };
+  });
+  console.log('hud:', JSON.stringify(hud));
+  await page.screenshot({ path: path.join(OUT, '05a-hud.png') });
+  if (hud.hidden || hud.bHidden) note('context HUD buttons did not appear for a selected building');
+  if (!hud.bKind || hud.label !== 'REPEAT') note(`unexpected HUD action label: ${hud.label}/${hud.bKind}`);
+  await page.evaluate(() => document.getElementById('hud-b').click());
+  await page.waitForTimeout(500);
+  const hudAfter = await page.evaluate(() => {
+    const host = window.__DUNE_HOST;
+    const p = host.call('dune_web_actions_debug'); const b = new Uint8Array(host.memory.buffer, p); let e = 0; while (e < b.length && b[e]) e += 1;
+    const a = JSON.parse(new TextDecoder().decode(b.subarray(0, e)));
+    return { nativeBCount: a.nativeBCount, selected: a.selected?.kind };
+  });
+  console.log('hud after REPEAT:', JSON.stringify(hudAfter));
+  if (!(hudAfter.nativeBCount > hud.nativeBCount)) note('HUD action did not reach the native B handler');
+  await page.evaluate(() => document.getElementById('hud-clear').click());
+  await page.waitForTimeout(400);
+  const hudCleared = await page.evaluate(() => document.getElementById('game-hud').hidden);
+  if (!hudCleared) note('CLEAR did not hide the context HUD');
+
   // Orientation: the map must reframe itself like the old port — portrait fills
   // the screen vertically, landscape horizontally. Then go back to portrait.
   const portraitBox = await page.locator('#game-canvas').boundingBox();

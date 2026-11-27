@@ -108,6 +108,15 @@
              border-top-color: var(--accent); animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .game-top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; z-index: 3; }
+  .hud { position: absolute; right: 14px; bottom: 154px; display: flex; flex-direction: column;
+         gap: 10px; align-items: flex-end; z-index: 4; }
+  .hud-btn { min-width: 92px; height: 46px; padding: 0 16px; border-radius: 23px; border: 1px solid #caa54a;
+             background: #2a2210; color: #ffd873; font: 600 14px/1 system-ui, sans-serif; letter-spacing: .06em;
+             box-shadow: 0 2px 0 rgba(0,0,0,.55); }
+  .hud-btn.ghost { background: rgba(20,16,8,.85); color: #e7cf96; }
+  .hud-btn:active { transform: translateY(1px); }
+  .hud-btn[hidden] { display: none; }
+  @media (orientation: landscape) { .hud { bottom: 122px; right: 24px; } }
   .game-controls { position: absolute; inset: auto 0 max(12px, env(safe-area-inset-bottom)) 0;
                    display: flex; justify-content: space-between; align-items: flex-end;
                    padding: 0 16px; z-index: 3; pointer-events: none; }
@@ -217,6 +226,11 @@
     </div>
     <div class="game-top-right">
       <button class="game-btn ghost" id="game-menu" aria-label="Меню" title="Меню">☰</button>
+    </div>
+    <div class="hud" id="game-hud" hidden>
+      <button class="hud-btn" id="hud-b" hidden></button>
+      <button class="hud-btn ghost" id="hud-place" hidden>PLACE</button>
+      <button class="hud-btn ghost" id="hud-clear" hidden>CLEAR</button>
     </div>
     <div class="game-controls" id="game-controls">
       <div class="dpad">

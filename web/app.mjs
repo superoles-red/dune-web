@@ -312,7 +312,10 @@ async function startPlay({ resume = false } = {}) {
       host,
       canvas: $('game-canvas'),
       isInputCaptured: () => !state.host || !$('game-sheet').classList.contains('hidden'),
-      onStatus: (snapshot) => { window.__DUNE_INPUT = snapshot; },
+      onStatus: (snapshot) => {
+        window.__DUNE_INPUT = snapshot;
+        updateHud(snapshot);
+      },
       onOrder: (order) => log(`input: ${order.type}`),
     });
     syncGameViewport();
@@ -334,6 +337,7 @@ async function startPlay({ resume = false } = {}) {
 }
 
 function stopPlay() {
+  $('game-hud').hidden = true;
   state.input?.destroy?.();
   state.input = null;
   if (state.host) {
@@ -346,6 +350,9 @@ function stopPlay() {
 
 $('play').addEventListener('click', () => startPlay({ resume: !!campaignStore?.resumable?.() }));
 $('new-game').addEventListener('click', () => startPlay({ resume: false }));
+$('hud-b').addEventListener('click', () => hudAction('confirm'));
+$('hud-place').addEventListener('click', () => hudAction('confirm'));
+$('hud-clear').addEventListener('click', () => hudAction('clear'));
 $('game-back').addEventListener('click', stopPlay);
 
 // On-screen pad: press on pointerdown, release on pointerup/cancel/leave.
@@ -485,6 +492,48 @@ function updateContinueButtons() {
   } else {
     $('new-game').classList.add('hidden');
   }
+}
+
+const HUD_LABELS = {
+  repeat: 'REPEAT',
+  'confirm-devastator': 'DETONATE',
+  'confirm-mcv': 'DEPLOY',
+  'confirm-native': 'CONFIRM',
+};
+
+function updateHud(snapshot) {
+  const hud = $('game-hud');
+  if (!hud) return;
+  const active = Boolean(state.host) && Boolean(currentRun());
+  const actions = snapshot?.actions ?? {};
+  const selected = actions.selected ?? {};
+  const placing = Boolean(actions.placementActive);
+  const hasSelection = selected.kind && selected.kind !== 'none';
+  const bLabel = HUD_LABELS[actions.bKind] || null;
+  const show = active && (placing || hasSelection || actions.bAvailable);
+  hud.hidden = !show;
+  if (!show) return;
+  const b = $('hud-b');
+  const place = $('hud-place');
+  const clear = $('hud-clear');
+  place.hidden = !placing;
+  b.hidden = placing || !actions.bAvailable;
+  b.textContent = bLabel || 'ACTION';
+  b.title = bLabel ? `Оригинальное действие B: ${bLabel}` : '';
+  clear.hidden = !(placing || hasSelection);
+  clear.title = placing ? 'Отменить размещение' : 'Снять выбор';
+}
+
+function hudAction(kind) {
+  const snapshot = window.__DUNE_INPUT ?? {};
+  const placing = Boolean(snapshot.actions?.placementActive);
+  if (kind === 'confirm') {
+    if (placing) state.input?.confirm?.();
+    else state.input?.action?.();
+    return;
+  }
+  if (placing) state.input?.cancelTarget?.();
+  else state.host?.call?.('dune_web_clear_selection');
 }
 
 function updateSoundButton() {
