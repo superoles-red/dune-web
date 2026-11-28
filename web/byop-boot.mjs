@@ -909,6 +909,28 @@ async function startRom(romBytes, name, { saved = false } = {}) {
       ui[name] = function (...args) { record(name, args.map((a) => (a && typeof a === 'object' ? 'obj' : String(a))).join(',')); return original.apply(this, args); };
       ui[name].__byopWrapped = true;
     };
+    // Safari standalone sometimes reports the CSS canvas size late; force the
+    // path-A virtual window to the current CSS pixel size so the expanded map
+    // frame is rendered at the real viewport size (otherwise the 320x224 frame
+    // gets CSS-stretched, which deforms sprites on tall phones).
+    const syncVirtualSize = () => {
+      try {
+        const canvas = document.getElementById('canvas');
+        const rect = canvas?.getBoundingClientRect?.();
+        const width = Math.round(rect?.width || innerWidth || 0);
+        const height = Math.round(rect?.height || innerHeight || 0);
+        if (width > 0 && height > 0) {
+          const before = [host.exports?.dune_web_virtual_window_width?.(), host.exports?.dune_web_virtual_window_height?.()];
+          host.exports?.dune_web_resize?.(width, height);
+          const after = [host.exports?.dune_web_virtual_window_width?.(), host.exports?.dune_web_virtual_window_height?.()];
+          if (before[0] !== after[0] || before[1] !== after[1]) console.log('[byop] virtual window', before, '->', after);
+        }
+      } catch { /* older runtime */ }
+    };
+    setTimeout(syncVirtualSize, 1500);
+    window.addEventListener('resize', syncVirtualSize);
+    window.addEventListener('orientationchange', () => setTimeout(syncVirtualSize, 400));
+    if (globalThis.visualViewport) globalThis.visualViewport.addEventListener('resize', syncVirtualSize);
     // Frontend menus paint several large art canvases; keeping the emulated
     // native frame at a full 60 fps underneath makes those transitions stutter
     // on a phone. Menus only need a slow native backdrop; the map keeps 60 fps.
