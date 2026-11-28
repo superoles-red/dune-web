@@ -181,6 +181,27 @@ static void dune_expanded_black(uint8_t *dst, size_t pixels) {
 static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, int sw, int sh,
                                 double scale) {
     if (!(scale > 0.0) || sw < 1 || sh < 1) return;
+    /* Integer scales (the native-resolution phone path uses 1:1) are copied
+       exactly; interpolating at 1:1 would blend every pixel with its neighbour
+       and look greasy. */
+    double rounded = (double)((int)(scale + 0.5));
+    if (scale >= 1.0 && fabs(scale - rounded) < 1e-9) {
+        int step = (int)rounded;
+        for (int y = 0; y < h; ++y) {
+            int sy = y / step;
+            if (sy >= sh) break;
+            for (int x = 0; x < w; ++x) {
+                int sx = x / step;
+                if (sx >= sw) break;
+                size_t sq = ((size_t)sy * (size_t)sw + (size_t)sx) * 4u;
+                size_t dq = ((size_t)y * (size_t)w + (size_t)x) * 4u;
+                dst[dq] = src[sq];
+                dst[dq + 1u] = src[sq + 1u];
+                dst[dq + 2u] = src[sq + 2u];
+            }
+        }
+        return;
+    }
     for (int y = 0; y < h; ++y) {
         double fy = ((double)y + 0.5) / scale - 0.5;
         if (fy < 0.0) fy = 0.0;
@@ -277,6 +298,24 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
     if (w <= 0 || h <= 0 || w > 2048 || h > 2048) return NULL;
     DuneLayout layout = dune_view_host_layout(&em_host, &em_cpu, w, h);
     if (!layout.world_width || !layout.world_height) return NULL;
+    /* On a phone the CSS viewport is only ~1.34x the native 320px screen. If we
+       compose the frame at CSS resolution, the world has to be resampled by a
+       fractional factor and the result looks greasy. Compose it at the native
+       HUD scale instead (320x693 for a tall phone) and let the browser's crisp
+       pixelated CSS upscale do the enlargement, exactly like the untouched
+       building/native screens. Desktop keeps its CSS-resolution frame. */
+    double out_scale = 1.0;
+    if (layout.ui_scale > 0.0 && layout.ui_scale < 2.0) out_scale = layout.ui_scale;
+    int out_w = (int)((double)w / out_scale + 0.5);
+    int out_h = (int)((double)h / out_scale + 0.5);
+    if (out_w < 1) out_w = 1;
+    if (out_h < 1) out_h = 1;
+    if (out_w > 2048) out_w = 2048;
+    if (out_h > 2048) out_h = 2048;
+    w = out_w;
+    h = out_h;
+    double hud_scale = layout.ui_scale / out_scale;
+    double world_scale = layout.world_scale / out_scale;
     DuneView *view = &em_host.dune_view;
     /* The SDL presentation path (dune_view_draw) publishes the native cursor
        state before building the view.  Path A called dune_view_build directly,
@@ -299,14 +338,14 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
     }
     dune_expanded_black(dune_expanded_frame, (size_t)w * (size_t)h);
     dune_expanded_world(dune_expanded_frame, w, h, view->pixels,
-                        (int)view->width, (int)view->height, layout.world_scale);
+                        (int)view->width, (int)view->height, world_scale);
     /* Same placement as dune_view_draw(): HUD top 144px and bottom 80px. */
-    double hud_w = 320.0 * layout.ui_scale;
+    double hud_w = 320.0 * hud_scale;
     double hud_x = (double)w - hud_w;
     dune_expanded_hud(dune_expanded_frame, w, h, view->ui, 0, 0, 320, 144,
-                      hud_x, 0.0, hud_w, 144.0 * layout.ui_scale);
+                      hud_x, 0.0, hud_w, 144.0 * hud_scale);
     dune_expanded_hud(dune_expanded_frame, w, h, view->ui, 0, 144, 320, 80,
-                      hud_x, (double)h - 80.0 * layout.ui_scale, hud_w, 80.0 * layout.ui_scale);
+                      hud_x, (double)h - 80.0 * hud_scale, hud_w, 80.0 * hud_scale);
     /* The SDL presentation draws the minimap viewport rectangle as an 8-rect
        overlay after the HUD; path A composes the frame in software instead. */
     if (dune_view_map(&em_cpu)) {
@@ -314,7 +353,7 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
         if (m.visible) {
             EmWebMiniRect r = em_web_minimap_view(m, layout.left, layout.top,
                                                   layout.world_width, layout.world_height);
-            double scale = layout.ui_scale;
+            double scale = hud_scale;
             double x = (double)w - 320.0 * scale + ((double)m.x + r.x) * scale;
             double y = (double)h - 224.0 * scale + ((double)m.y + r.y) * scale;
             double thick = scale < 1.0 ? 1.0 : scale;
