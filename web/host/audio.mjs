@@ -68,10 +68,11 @@ export class DuneAudio {
     this.context = null;
     this.node = null;
     this.scratchPointer = 0;
+    this.pumpTimer = 0;
     this.moduleLoaded = false;
     this.enabled = false;
     this.workletReady = false;
-    this.workletStats = { frames: 0, underruns: 0, queued: 0, sampleRate: 0 };
+    this.workletStats = { frames: 0, underruns: 0, overflow: 0, queued: 0, sampleRate: 0 };
     this.metrics = createMetrics();
     this.log = [];
   }
@@ -110,7 +111,17 @@ export class DuneAudio {
   /* -------------------------------------------------------------- device -- */
 
   /** Create/resume the AudioContext and connect the worklet. User gesture only. */
+  /** Respect the phone's silent switch: the default WebAudio session type is
+   *  "ambient" on iOS, which is muted by the ringer switch and mixes with other
+   *  apps.  Never force "playback" here. */
+  #applyAudioSession() {
+    try {
+      if (globalThis.navigator?.audioSession) globalThis.navigator.audioSession.type = 'ambient';
+    } catch { /* not supported (Android/older Safari) */ }
+  }
+
   async enable({ music = this.music, sound = this.sound } = {}) {
+    this.#applyAudioSession();
     if (this.enabled) {
       await this.#resume();
       return this.stats();
@@ -171,6 +182,7 @@ export class DuneAudio {
       throw new AudioUnavailableError('dune_rt_set_audio_mode(AUDIO_ON) failed');
     }
     this.enabled = true;
+    this.#startPumpTimer();
     this.metrics = createMetrics();
     this.#note(`audio ON (${AUDIO_RATE} Hz, ${this.chunkFrames}-frame packets)`);
     return this.stats();
@@ -186,7 +198,22 @@ export class DuneAudio {
     }
   }
 
+  #startPumpTimer() {
+    if (this.pumpTimer) return;
+    // Feed audio between animation frames too: the legacy UI's canvas redraw can
+    // make a frame longer than the 16 ms audio period.
+    this.pumpTimer = setInterval(() => {
+      if (!this.enabled) return;
+      try { this.pump({ maxChunks: 2 }); } catch { /* audio is best effort */ }
+    }, 8);
+  }
+
+  #stopPumpTimer() {
+    if (this.pumpTimer) { clearInterval(this.pumpTimer); this.pumpTimer = 0; }
+  }
+
   async #close() {
+    this.#stopPumpTimer();
     if (this.node) {
       try { this.node.disconnect(); } catch { /* already disconnected */ }
       this.node = null;
@@ -214,6 +241,7 @@ export class DuneAudio {
 
   async suspend() {
     if (!this.enabled) return;
+    this.#stopPumpTimer();
     if (this.context && this.context.state === 'running') {
       try { await this.context.suspend(); } catch { /* ignore */ }
     }
@@ -221,7 +249,9 @@ export class DuneAudio {
 
   async resume() {
     if (!this.enabled) return;
+    this.#applyAudioSession();
     await this.#resume();
+    this.#startPumpTimer();
   }
 
   /* --------------------------------------------------------------- mixer -- */
@@ -266,6 +296,10 @@ export class DuneAudio {
       }
       this.metrics.samples += count * 2;
       this.metrics.frames += count;
+      // Debug/analyser hook: when a page sets __DUNE_AUDIO_CAPTURE__, keep the
+      // exact PCM posted to the worklet so tests can look for clicks/dropouts.
+      const capture = globalThis.__DUNE_AUDIO_CAPTURE__;
+      if (Array.isArray(capture) && capture.length < (globalThis.__DUNE_AUDIO_CAPTURE_LIMIT__ || 64)) capture.push(pcm.slice());
       framesPosted += count;
       posted += 1;
       this.node.port.postMessage({ type: 'pcm', interleaved: pcm }, [pcm.buffer]);
@@ -305,6 +339,7 @@ export class DuneAudio {
       this.workletStats = {
         frames: message.frames,
         underruns: message.underruns,
+        overflow: message.overflow ?? 0,
         queued: message.queued,
         sampleRate: message.sampleRate,
       };

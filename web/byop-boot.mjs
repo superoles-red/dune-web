@@ -367,7 +367,16 @@ async function prepareFrontendState(host, romSha, gameSha) {
     return cached;
   }
   setStatus('fast-forward', 'Прокручиваем оригинальное интро до главного меню');
-  host.advanceInstructions(FAST_FORWARD_INSTRUCTIONS, { maxSteps: 300_000_000 });
+  // Chunked on purpose: iPhone Safari kills the tab on a single very long
+  // synchronous task, and the first launch (no cached fixture yet) used to do
+  // all ~26M instructions in one go. Yielding keeps the boot screen alive.
+  const chunk = 1_000_000;
+  for (let done = 0; done < FAST_FORWARD_INSTRUCTIONS; done += chunk) {
+    host.advanceInstructions(chunk, { maxSteps: 300_000_000 });
+    const percent = Math.min(99, Math.round(((done + chunk) / FAST_FORWARD_INSTRUCTIONS) * 100));
+    setStatus('fast-forward', `Прокручиваем оригинальное интро… ${percent}%`);
+    if (done % (chunk * 4) === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
   const readCampaign = () => {
     const pointer = host.exports.dune_web_campaign_json();
     const bytes = new Uint8Array(host.memory.buffer, pointer);
@@ -527,13 +536,26 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     ui.hint.textContent = `ROM ${romBytes.length} байт · SHA-256 ${state.romSha.slice(0, 16)}…`;
     window.__BYOP_ROM_SHA__ = state.romSha;
     saveRomInput(romBytes, name);
-    setStatus('build', 'Собираем игру из ROM…');
+    // If this ROM was built before, use the cached core directly: no Worker,
+    // no Pyodide, no network. This makes repeat launches instant and lets the
+    // game start fully offline.
+    try {
+      const cached = await readCachedGame(state.romSha);
+      if (cached && cached.length > 1024) {
+        state.gameBytes = cached;
+        state.gameSha = await sha256Hex(cached);
+        setStatus('cache_read', 'Игра уже собрана — запускаем из памяти устройства');
+      }
+    } catch { /* no cache yet */ }
 
-    const result = await buildCore(romBytes);
-    state.gameSha = result.output_sha256 || result.game_sha256;
-    setStatus('load', 'Загружаем ядро игры…');
-    const gameBytes = await readCachedGame(state.romSha);
-    state.gameBytes = gameBytes;
+    if (!state.gameBytes) {
+      setStatus('build', 'Собираем игру из ROM…');
+      const result = await buildCore(romBytes);
+      state.gameSha = result.output_sha256 || result.game_sha256;
+      setStatus('load', 'Загружаем ядро игры…');
+      state.gameBytes = await readCachedGame(state.romSha);
+    }
+    const gameBytes = state.gameBytes;
 
     const host = await bootHost(romBytes, gameBytes);
     setStatus('boot', 'Запускаем оригинальную игру…');
@@ -563,6 +585,25 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     };
     window.addEventListener('pointerdown', resumeAudioOnGesture, { capture: true, once: true });
     window.addEventListener('keydown', resumeAudioOnGesture, { capture: true, once: true });
+
+    // Minimising the app must not leave a backlog: pause the device clock while
+    // hidden, then drop queued PCM and restart cleanly on return (otherwise the
+    // first seconds after resume sound delayed/garbled).
+    const onVisibility = () => {
+      try {
+        if (document.hidden) {
+          host.audio?.suspend?.();
+          host.audio?.flush?.();
+        } else {
+          host.audio?.flush?.();
+          host.audio?.resume?.()?.catch?.(() => {});
+          setTimeout(() => host.audio?.pump?.(), 60);
+        }
+      } catch { /* audio is optional */ }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', () => { try { host.audio?.suspend?.(); } catch { /* ignore */ } });
+    window.addEventListener('pageshow', () => { try { host.audio?.flush?.(); host.audio?.resume?.()?.catch?.(() => {}); } catch { /* ignore */ } });
 
     // The old engine received keyboard input through SDL; the BYOP runtime has no
     // SDL event pipe, so forward the original Sega pad bits ourselves. This is
@@ -627,7 +668,21 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     window.__BYOP_TIMINGS__ = { ...(window.__BYOP_TIMINGS__ || {}), shellAt: Date.now() };
     setStatus('shell', 'Передаём управление старому интерфейсу…');
     installStartupHooks();
+    const shellWatchdog = setTimeout(() => {
+      if (window.__DUNE_UI__) return;
+      ui.panel.hidden = false;
+      ui.pick.hidden = true;
+      ui.startSaved.hidden = true;
+      ui.change.hidden = false;
+      ui.progress.hidden = true;
+      ui.retry.hidden = false;
+      ui.text.classList.add('error');
+      ui.text.textContent = 'Интерфейс игры не запустился. Перезагрузите страницу или пришлите отчёт диагностики (?diag=1).';
+      setStatus('error', 'shell import did not finish');
+      window.__BYOP_ERROR__ = 'shell import did not finish';
+    }, 45000);
     await import('./shell.js');
+    clearTimeout(shellWatchdog);
     window.__BYOP_SHELL_IMPORTED__ = true;
     // shell.js hides the old boot screen through startup.finish(); keep ours up
     // until the legacy interface reports ready (or 30 s pass on a slow device).

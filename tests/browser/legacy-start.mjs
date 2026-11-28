@@ -36,6 +36,13 @@ try {
   await page.setInputFiles('#byop-rom', ROM);
   await page.waitForFunction(() => window.__BYOP_READY__ === true, null, { timeout: 300000, polling: 1000 });
   await page.waitForTimeout(2500);
+  const hardening = await page.evaluate(() => ({
+    userSelect: getComputedStyle(document.body).userSelect,
+    touchAction: getComputedStyle(document.documentElement).touchAction,
+    appName: null,
+  }));
+  console.log('hardening:', JSON.stringify(hardening));
+  if (hardening.userSelect !== 'none') note('body text selection is not disabled');
   const state = () => page.evaluate(() => {
     const ui = window.__DUNE_UI__;
     return {
@@ -114,7 +121,10 @@ try {
     if (!resumed) note('CONTINUE did not restore the armed mission');
     await shot('start-04-resumed.png');
   }
-  const report = { ok: problems.length === 0, problems, final, dialogState, continueVisible };
+  const manifest = await page.evaluate(async () => { try { const r = await fetch('./app.webmanifest'); return (await r.json()).name; } catch { return null; } });
+  console.log('manifest name:', JSON.stringify(manifest));
+  if (manifest !== 'Dune') note('installed app name is not Dune: ' + manifest);
+  const report = { ok: problems.length === 0, problems, final, dialogState, continueVisible, hardening, manifest };
   fs.writeFileSync(path.join(OUT, 'start.json'), JSON.stringify(report, null, 2));
   console.log('final:', JSON.stringify(final));
   console.log(problems.length === 0 ? 'LEGACY-START OK' : 'LEGACY-START FAILED');

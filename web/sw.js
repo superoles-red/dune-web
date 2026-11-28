@@ -39,9 +39,13 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'DUNE_PING') {
-    event.source?.postMessage({ type: 'DUNE_PONG', version: VERSION });
-  }
+  if (!event.data || event.data.type !== 'DUNE_PING') return;
+  const payload = { type: 'DUNE_PONG', version: VERSION };
+  // The page pings through a MessageChannel; reply on its port (event.source is
+  // not guaranteed for service-worker MessageEvents, and a missed reply made the
+  // page think its worker was stale, clearing caches and reloading).
+  if (event.ports && event.ports[0]) event.ports[0].postMessage(payload);
+  else event.source?.postMessage(payload);
 });
 
 const networkFirst = async (request) => {
