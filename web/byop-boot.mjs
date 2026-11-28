@@ -689,6 +689,29 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     }, 45000);
     await import('./shell.js');
     clearTimeout(shellWatchdog);
+    // The shell can import successfully and still leave a blank home screen
+    // (asset/layout failure on a phone). Surface that instead of a black page.
+    const health = setInterval(() => {
+      if (!window.__DUNE_UI__) return;
+      clearInterval(health);
+      setTimeout(() => {
+        if (!window.__DUNE_UI__) return;
+        const ui = window.__DUNE_UI__;
+        const visible = [...document.querySelectorAll('button, [role="button"]')].some((element) => element.offsetWidth > 0 && element.offsetHeight > 0);
+        if (ui.view === 'home' && !visible) {
+          ui.panel.hidden = false;
+          ui.pick.hidden = true;
+          ui.startSaved.hidden = true;
+          ui.change.hidden = false;
+          ui.progress.hidden = true;
+          ui.retry.hidden = false;
+          ui.text.classList.add('error');
+          ui.text.textContent = 'Интерфейс загрузился, но главный экран не отрисовался. Нажмите «Перезагрузить» или пришлите отчёт (?diag=1).';
+          setStatus('error', 'home screen has no visible controls');
+          window.__BYOP_ERROR__ = 'home screen has no visible controls';
+        }
+      }, 3000);
+    }, 400);
     window.__BYOP_SHELL_IMPORTED__ = true;
     // shell.js hides the old boot screen through startup.finish(); keep ours up
     // until the legacy interface reports ready (or 30 s pass on a slow device).

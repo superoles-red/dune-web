@@ -211,6 +211,7 @@ img,svg{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
     return JSON.stringify({
       url: location.href,
       ua: navigator.userAgent,
+      env: { screen: [screen.width, screen.height], window: [innerWidth, innerHeight], dpr: devicePixelRatio, cores: navigator.hardwareConcurrency || null, deviceMemory: navigator.deviceMemory || null, standalone: matchMedia('(display-mode: standalone)').matches, hidden: document.hidden, canvas: (function () { var c = document.getElementById('canvas'); return c ? [c.width, c.height, c.clientWidth, c.clientHeight] : null; })() },
       byop: window.__BYOP_STATUS__ || null,
       scene: ui && ui.state ? { scene: ui.state.scene, ready: ui.state.sceneReady, inputKind: ui.state.inputKind } : null,
       ui: ui ? { view: ui.view, displayed: ui.displayed, busy: ui.busy, pending: ui.pendingScreen ? ui.pendingScreen.kind : null } : null,
