@@ -717,6 +717,7 @@ export class DuneHost {
 
   /** Copy the hardware RGB frame to the canvas (RGB24 -> ImageData RGBA). */
   drawFrame() {
+    if (this.canvas && this.canvas.style.transform) this.canvas.style.transform = '';
     const { width, height } = this.frameSize();
     if (!this.canvas || !this.ctx || !width || !height) return false;
     if (this.canvas.width !== width || this.canvas.height !== height) {
@@ -905,6 +906,11 @@ export class DuneHost {
     }
     this.imageData.data.set(frame.rgba);
     this.ctx.putImageData(this.imageData, 0, 0);
+    // Integer-camera raster + a compositor translate: motion is continuous but
+    // sprites are never resampled, so small details do not shimmer.
+    const [sx, sy] = this.cameraSubpixel();
+    const cssPerSource = (this.canvas.clientWidth || 320) / 320;
+    this.canvas.style.transform = `translate3d(${(-sx * cssPerSource).toFixed(3)}px, ${(-sy * cssPerSource).toFixed(3)}px, 0)`;
     return { width: frame.width, height: frame.height };
   }
 
@@ -915,6 +921,18 @@ export class DuneHost {
       return JSON.parse(decodeCString(this.rt, this.exports.dune_web_camera_debug()));
     } catch {
       return null;
+    }
+  }
+
+  /** Fractional camera remainder (world px) for lossless CSS panning. */
+  cameraSubpixel() {
+    try {
+      const pointer = this.exports?.dune_web_camera_subpixel_ptr?.();
+      if (!pointer) return [0, 0];
+      const view = this.#view();
+      return [view.getFloat64(pointer, true), view.getFloat64(pointer + 8, true)];
+    } catch {
+      return [0, 0];
     }
   }
 

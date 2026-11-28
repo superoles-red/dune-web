@@ -345,11 +345,11 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
         dune_expanded_frame_capacity = bytes;
     }
     dune_expanded_black(dune_expanded_frame, (size_t)w * (size_t)h);
-    /* Sub-pixel camera remainder: the world raster is built at the rounded
-       camera position, so shift sampling by the fraction for smooth panning. */
+    /* World sampling stays at the integer camera position (no per-pixel mixing,
+       so small sprites do not shimmer). The fractional remainder is applied by
+       the host as a CSS translate of the whole canvas. */
     dune_expanded_world(dune_expanded_frame, w, h, view->pixels,
-                        (int)view->width, (int)view->height, world_scale,
-                        em_web_camera_sub_x(), em_web_camera_sub_y());
+                        (int)view->width, (int)view->height, world_scale, 0.0, 0.0);
     /* Same placement as dune_view_draw(): HUD top 144px and bottom 80px. */
     double hud_w = 320.0 * hud_scale;
     double hud_x = (double)w - hud_w;
@@ -384,6 +384,15 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
     dune_expanded_frame_width = (unsigned)w;
     dune_expanded_frame_height = (unsigned)h;
     return dune_expanded_frame;
+}
+
+/* Presentation-only sub-pixel camera remainder (world pixels), consumed by the
+   host to translate the canvas at display resolution without resampling. */
+EMSCRIPTEN_KEEPALIVE uintptr_t dune_web_camera_subpixel_ptr(void) {
+    static double out[2];
+    out[0] = em_web_camera_sub_x();
+    out[1] = em_web_camera_sub_y();
+    return (uintptr_t)out;
 }
 
 EMSCRIPTEN_KEEPALIVE int dune_web_expanded_frame_width(void) {
