@@ -876,6 +876,50 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     }, 45000);
     await import('./shell.js');
     clearTimeout(shellWatchdog);
+    // Trace the legacy UI route calls and pointer targets so a phone report can
+    // show exactly where a tap sequence stalls.
+    const trace = [];
+    window.__BYOP_TRACE__ = trace;
+    const record = (kind, detail) => {
+      trace.push({ t: Math.round(performance.now()), kind, detail });
+      if (trace.length > 60) trace.shift();
+    };
+    window.addEventListener('pointerdown', (event) => {
+      const button = event.target?.closest?.('button');
+      record('pointerdown', `${event.pointerType || ''} ${button?.id || event.target?.id || event.target?.tagName || ''}`.trim());
+    }, true);
+    window.addEventListener('click', (event) => {
+      const button = event.target?.closest?.('button');
+      record('click', `${button?.id || event.target?.id || event.target?.tagName || ''}`.trim());
+    }, true);
+    const wrap = (ui, name) => {
+      if (!ui || typeof ui[name] !== 'function' || ui[name].__byopWrapped) return;
+      const original = ui[name];
+      ui[name] = function (...args) { record(name, args.map((a) => (a && typeof a === 'object' ? 'obj' : String(a))).join(',')); return original.apply(this, args); };
+      ui[name].__byopWrapped = true;
+    };
+    // Frontend menus paint several large art canvases; keeping the emulated
+    // native frame at a full 60 fps underneath makes those transitions stutter
+    // on a phone. Menus only need a slow native backdrop; the map keeps 60 fps.
+    const renderTimer = setInterval(() => {
+      const ui = window.__DUNE_UI__;
+      if (!ui || !host) return;
+      host.expandedIntervalMs = ui.view === 'native' ? 16 : 40;
+    }, 400);
+    window.addEventListener('beforeunload', () => clearInterval(renderTimer));
+    const traceTimer = setInterval(() => {
+      const ui = window.__DUNE_UI__;
+      if (!ui) return;
+      clearInterval(traceTimer);
+      for (const name of ['showHouses', 'showMissions', 'chooseMission', 'startMission', 'requestRoute', 'front', 'mainMenu']) wrap(ui, name);
+      if (ui.curtain) {
+        for (const name of ['cover', 'reveal']) {
+          if (typeof ui.curtain[name] !== 'function') continue;
+          const original = ui.curtain[name];
+          ui.curtain[name] = function (...args) { record('curtain.' + name, args.map((a) => (a && typeof a === 'object' ? JSON.stringify(a).slice(0, 60) : String(a))).join(',')); return original.apply(this, args); };
+        }
+      }
+    }, 100);
     // The old frontend always shows the HTML home screen over the native intro.
     // On some phones the shell imports but stays in the native intro forever;
     // route back to home once, then surface a visible report if the UI is blank.

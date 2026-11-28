@@ -80,19 +80,19 @@ try {
   console.log('button canvases:', JSON.stringify(painted));
   if (!painted.some((item) => item.painted > 100)) note('button canvases are blank in WebKit (atlas decode regression)');
 
-  await page.evaluate(() => document.getElementById('new-campaign')?.click());
+  await page.locator('#new-campaign').tap();
   await page.waitForTimeout(1500);
   const houses = await page.evaluate(() => ({ view: window.__DUNE_UI__?.view, buttons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.id).slice(0, 10) }));
   console.log('houses:', JSON.stringify(houses));
   if (!houses.buttons.includes('house-1')) note('house buttons are missing in WebKit');
   await page.screenshot({ path: path.join(OUT, '02-houses.png') });
 
-  await page.evaluate(() => document.getElementById('house-1')?.click());
+  await page.locator('#house-1').tap();
   await page.waitForTimeout(1200);
-  await page.evaluate(() => document.getElementById('mission-1')?.click());
+  await page.locator('#mission-1').tap();
   await page.waitForTimeout(1500);
   const dialog = await page.evaluate(() => !!document.querySelector('#native-confirmation:not([hidden])'));
-  if (dialog) await page.locator('#native-confirmation .confirmation-actions button').first().click();
+  if (dialog) await page.locator('#native-confirmation .confirmation-actions button').first().tap();
   await page.waitForTimeout(2500);
   for (let i = 0; i < 24; i += 1) {
     if (await page.locator('#native-yes').count()) break;

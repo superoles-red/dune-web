@@ -217,6 +217,8 @@ img,svg{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
       scene: ui && ui.state ? { scene: ui.state.scene, ready: ui.state.sceneReady, inputKind: ui.state.inputKind } : null,
       ui: ui ? { view: ui.view, displayed: ui.displayed, busy: ui.busy, pending: ui.pendingScreen ? ui.pendingScreen.kind : null } : null,
       shellStage: window.__BYOP_SHELL_STAGE__ || null,
+      trace: (window.__BYOP_TRACE__ || []).slice(-30),
+      media: { reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, touchPoints: navigator.maxTouchPoints || 0 },
       dom: (function () {
         var el = document.getElementById('scene-ui');
         var out = { ready: window.__BYOP_READY__ === true, byopPanelHidden: !!document.getElementById('byop-launch')?.hidden, launchHidden: !!document.getElementById('launch')?.hidden };
