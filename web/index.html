@@ -118,10 +118,53 @@
 <!-- END GENERATED STARTUP -->
 <!-- BYOP boot: ROM picker -> in-browser recompile -> runtime.wasm -> legacy shell.js -->
 <script id="byop-sw">
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+(function () {
+  if (!('serviceWorker' in navigator)) return;
+  var CURRENT = 'dune-byop-v4';
+  var HEAL_KEY = 'dune-sw-heal-at';
+  var params = new URLSearchParams(location.search);
+  var emergency = params.has('nosw');
+  if (emergency) {
+    var banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;z-index:999;left:8px;right:8px;bottom:8px;padding:8px 12px;background:#242442;color:#fff;font:12px monospace;border:1px solid #9393b6';
+    banner.textContent = 'Аварийный режим: service worker отключён (?nosw=1). Офлайн-режим недоступен.';
+    document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(banner); });
+  }
+  function clearAll() {
+    return navigator.serviceWorker.getRegistrations().then(function (registrations) {
+      return Promise.all(registrations.map(function (registration) { return registration.unregister(); }));
+    }).then(function () { return caches.keys(); }).then(function (keys) {
+      return Promise.all(keys.map(function (key) { return caches.delete(key); }));
+    });
+  }
+  if (emergency) { clearAll().catch(function () {}); return; }
+  function checkController() {
+    return navigator.serviceWorker.getRegistration().then(function (registration) {
+      var active = registration && registration.active;
+      if (!active) return null;
+      return new Promise(function (resolve) {
+        var channel = new MessageChannel();
+        var timer = setTimeout(function () { resolve(null); }, 1200);
+        channel.port1.onmessage = function (event) {
+          if (event.data && event.data.type === 'DUNE_PONG') { clearTimeout(timer); resolve(event.data.version || null); }
+        };
+        try { active.postMessage({ type: 'DUNE_PING' }, [channel.port2]); } catch (error) { clearTimeout(timer); resolve(null); }
+      });
+    });
+  }
+  window.addEventListener('load', function () {
+    checkController().then(function (version) {
+      if (version === CURRENT) return navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
+      var now = Date.now();
+      var last = 0;
+      try { last = Number(sessionStorage.getItem(HEAL_KEY) || 0); } catch (error) {}
+      if (now - last < 60000) return; // avoid a reload loop; the page keeps running
+      try { sessionStorage.setItem(HEAL_KEY, String(now)); } catch (error) {}
+      return clearAll().then(function () { location.reload(); });
+    }).catch(function () {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
+    });
   });
-}
+})();
 </script>
 <script type="module" src="byop-boot.mjs?v=20261128-legacy-byop"></script></body></html>
