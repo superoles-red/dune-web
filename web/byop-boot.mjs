@@ -204,7 +204,7 @@ function ensureWorker() {
   if (state.worker) return state.worker;
   // The recompiler worker lives at the BYOP root; its relative fetches
   // (reference.json, py-package.zip, vendor/pyodide/) then resolve there too.
-  const worker = new Worker('../recompiler.worker.js', { type: 'module' });
+  const worker = new Worker('./recompiler.worker.js', { type: 'module' });
   worker.addEventListener('message', (event) => {
     const message = event.data;
     if (message.type === 'state') {

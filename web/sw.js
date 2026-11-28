@@ -1,188 +1,89 @@
-/* DUNE BYOP — offline app shell service worker (v3).
+/* Dune BYOP (legacy frontend) — offline shell worker.
  *
- * Versioning rules that keep a deployed shell from being mixed with an old one:
- *
- *  - Shell files (HTML, JS modules, the recompiler worker, the runtime loader)
- *    are NETWORK-FIRST.  A reload always tries the deployed bytes first and
- *    only falls back to the cache when the network is unavailable.  This makes
- *    the old "new index.html + cached app.mjs" combination impossible.
- *  - Heavy, version-pinned payloads (runtime/runtime.wasm, py-package.zip,
- *    vendor/pyodide/*, icons) stay CACHE-FIRST so offline play keeps working
- *    without downloading tens of megabytes on every visit.
- *  - VERSION is part of the cache name.  Activating a new worker deletes every
- *    other cache on the origin, so a stale shell can never survive an update.
- *  - The worker answers DUNE_PING with its VERSION; index.html uses that to
- *    detect a stale controller (see the bootstrap script there) and purge it.
- *
- * The player's ROM is never requested by the SW; the generated game.wasm lives
- * in OPFS (web/recompiler.worker.js) and is reused offline.
+ * The page is the original Dune Sega Web frontend; the ROM is a local File and
+ * the generated game.wasm lives in OPFS, so neither is fetched here. This worker
+ * only makes the wrapper/runtime/Pyodide and the original art available offline
+ * after the first visit. Shell modules are network-first so a deploy can never
+ * mix a new index.html with stale modules (the bug that produced a black canvas
+ * with only the on-screen buttons).
  */
-const VERSION = 'dune-byop-v3';
-
-/* Files fetched from the network first and cached for the offline fallback. */
-const SHELL_FILES = [
-  './',
-  './index.html',
-  './app.mjs',
-  './i18n.mjs',
-  './manifest.webmanifest',
-  './reference.json',
-  './recompiler.worker.js',
-  './runtime/loader.mjs',
-  './runtime/abi.json',
-  './runtime/game-reference.json',
-  './input/index.mjs',
-  './input/gestures.mjs',
-  './input/map-input.mjs',
-  './input/order-input.mjs',
-  './input/pan-inertia.mjs',
-  './input/placement-mode.mjs',
-  './input/context-action.mjs',
-  './host/host.mjs',
-  './host/audio.mjs',
-  './host/audio-worklet.js',
-  './saves/browser-files.mjs',
-  './saves/campaign-state.mjs',
-  './saves/save-files.mjs',
-];
-
-/* Heavy payloads that never change within a pinned build: cache first. */
-const STATIC_FILES = [
+const VERSION = 'dune-byop-v4';
+const SHELL_CACHE = VERSION;
+const ASSET_CACHE = VERSION + '-assets';
+const IMMUTABLE_PREFIXES = [
   './runtime/runtime.wasm',
   './py-package.zip',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
+  './vendor/pyodide/',
 ];
-
-const SHELL_PREFIXES = ['input/', 'host/', 'saves/', 'runtime/'];
-const STATIC_PREFIXES = ['vendor/pyodide/', 'icons/'];
-
-const scopePath = () => new URL(self.registration.scope).pathname;
-
-const relativePath = (url) => {
-  const scope = scopePath();
-  return url.pathname.startsWith(scope) ? url.pathname.slice(scope.length) : null;
-};
-
-/* Unknown files are treated as shell: a wrong guess costs one network round
- * trip, while caching them forever could serve stale code after a deploy. */
-const classify = (relative) => {
-  if (relative == null) return 'other';
-  if (STATIC_PREFIXES.some((prefix) => relative.startsWith(prefix))) return 'static';
-  if (STATIC_FILES.some((file) => file.slice(2) === relative)) return 'static';
-  if (SHELL_PREFIXES.some((prefix) => relative.startsWith(prefix))) return 'shell';
-  if (relative === 'runtime/runtime.wasm') return 'static';
-  if (SHELL_FILES.some((file) => file === './' ? relative === '' : file.slice(2) === relative)) return 'shell';
-  return 'other';
-};
-
-const cacheName = VERSION;
-const openCache = () => caches.open(cacheName);
-
-const cachePut = async (request, response) => {
-  if (!response || !response.ok) return response;
-  if (response.type !== 'basic') return response;
-  try {
-    const cache = await openCache();
-    await cache.put(request, response.clone());
-  } catch {
-    /* quota errors must not break the response */
-  }
-  return response;
-};
-
-const offlineFallback = async (request) => {
-  const cache = await openCache();
-  const cached = (await cache.match(request, { ignoreSearch: true })) || null;
-  if (cached) return cached;
-  return null;
-};
+const SHELL_PATH = /(?:^|\/)(?:index\.html|byop-boot\.mjs|shell\.js|entry\.js|[^/]+\.mjs|[^/]+\.js|[^/]+\.css|app\.webmanifest|sw\.js)$/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
-    const cache = await openCache();
-    // Cache files individually so one 404 does not break the whole install.
-    await Promise.all([...SHELL_FILES, ...STATIC_FILES].map(async (path) => {
+    const cache = await caches.open(SHELL_CACHE);
+    for (const url of ['./', './index.html', './byop-boot.mjs', './app.webmanifest']) {
       try {
-        const response = await fetch(path, { cache: 'reload' });
-        if (response.ok) {
-          await cache.put(path, response);
-        } else {
-          // Drain/cancel the body of a 404: an unconsumed install response has
-          // been observed to leave Chromium's install event hanging.
-          try { await response.body?.cancel(); } catch { /* already consumed */ }
-        }
-      } catch {
-        /* offline first visit: the remaining entries still install */
-      }
-    }));
+        const response = await fetch(url, { cache: 'reload' });
+        if (response.ok) await cache.put(url, response);
+      } catch { /* first visit may be partially offline */ }
+    }
     await self.skipWaiting();
   })());
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    // Delete every other cache on the origin: stale shell versions must never
-    // be able to answer a request after this worker takes over.
     const keys = await caches.keys();
-    await Promise.all(keys.filter((key) => key !== VERSION).map((key) => caches.delete(key)));
+    await Promise.all(keys.filter((key) => key !== SHELL_CACHE && key !== ASSET_CACHE).map((key) => caches.delete(key)));
     await self.clients.claim();
   })());
 });
 
-/* index.html checks that the controller is not older than the page it served. */
 self.addEventListener('message', (event) => {
-  const data = event.data || {};
-  if (data.type !== 'DUNE_PING') return;
-  const payload = { type: 'DUNE_PONG', version: VERSION };
-  const port = event.ports && event.ports[0];
-  if (port) {
-    port.postMessage(payload);
-    return;
+  if (event.data && event.data.type === 'DUNE_PING') {
+    event.source?.postMessage({ type: 'DUNE_PONG', version: VERSION });
   }
-  if (event.source && event.source.postMessage) event.source.postMessage(payload);
 });
+
+const networkFirst = async (request) => {
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch {
+    return (await cache.match(request)) || (await cache.match('./index.html')) || (await cache.match('./')) || Response.error();
+  }
+};
+
+const cacheFirst = async (request, backgroundUpdate = true) => {
+  const cache = await caches.open(ASSET_CACHE);
+  const cached = await cache.match(request);
+  if (cached) {
+    if (backgroundUpdate) fetch(request).then((response) => { if (response.ok) cache.put(request, response); }).catch(() => {});
+    return cached;
+  }
+  const response = await fetch(request);
+  if (response.ok && response.type === 'basic') cache.put(request, response.clone());
+  return response;
+};
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-
-  // /?nosw=1 is an emergency escape hatch; the page also unregisters us.
   if (request.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        return await fetch(request);
-      } catch {
-        const cached = (await (await openCache()).match('./index.html')) || (await (await openCache()).match('./'));
-        return cached || Response.error();
-      }
-    })());
+    event.respondWith(networkFirst(request));
     return;
   }
-
-  const kind = classify(relativePath(url));
-  if (kind === 'shell' || kind === 'other') {
-    // Network first: never mix a freshly deployed index.html with old modules.
-    event.respondWith((async () => {
-      try {
-        return await cachePut(request, await fetch(request, { cache: 'no-store' }));
-      } catch {
-        return (await offlineFallback(request)) || Response.error();
-      }
-    })());
+  const relative = './' + url.pathname.replace(/^\/.*?(?:\/dune-web\/)?/, '').replace(/^\/+/, '');
+  if (IMMUTABLE_PREFIXES.some((prefix) => relative.startsWith(prefix))) {
+    event.respondWith(cacheFirst(request, false));
     return;
   }
-
-  // static: cache first, refreshed only by a new VERSION/install.
-  event.respondWith((async () => {
-    const cached = await offlineFallback(request);
-    if (cached) return cached;
-    try {
-      return await cachePut(request, await fetch(request));
-    } catch {
-      return Response.error();
-    }
-  })());
+  if (SHELL_PATH.test(url.pathname)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+  event.respondWith(cacheFirst(request));
 });

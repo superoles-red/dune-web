@@ -1,683 +1,127 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#120d08">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="DUNE">
-<link rel="manifest" href="./manifest.webmanifest">
-<link rel="apple-touch-icon" href="./icons/icon-192.png">
-<link rel="icon" href="./icons/icon-192.png">
-<title>Dune</title>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#000000"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Dune - The Battle for Arrakis"><link rel="manifest" href="./app.webmanifest"><link rel="apple-touch-icon" href="./icons/dune-180.png"><link rel="icon" type="image/png" href="./icons/dune-192.png"><title>Dune - The Battle for Arrakis</title>
 <style>
-  :root {
-    color-scheme: dark;
-    --bg: #120d08; --panel: #1b140c; --panel-2: #241a0f; --line: #3a2c1a;
-    --text: #e8d8b8; --muted: #9a8565; --accent: #f0c870; --ok: #8fd08f; --bad: #e08070;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; }
-  body {
-    margin: 0; background: radial-gradient(120% 80% at 50% 0%, #1d1509 0%, var(--bg) 70%);
-    color: var(--text); font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex; flex-direction: column; align-items: center;
-    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
-  }
-  main { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 18px; flex: 1; }
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#000;color:#ddd;font:13px Arial,sans-serif;overflow:hidden;overscroll-behavior:none;touch-action:pan-x pan-y}#canvas{display:block;width:100%!important;height:100%!important;object-fit:contain;image-rendering:pixelated;outline:none;touch-action:none;user-select:none;-webkit-user-select:none}button{font:inherit;color:#e2e2de;background:#191b1de0;border:1px solid #8b8b8488;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}button:hover{background:#343638e8}button:focus-visible{outline:2px solid #fff;outline-offset:3px}.game-control{width:48px;height:48px;display:grid;place-items:center;border-radius:5px;box-shadow:0 2px 5px #0008}.game-control svg{width:27px;height:27px}#native-menu{position:fixed;z-index:10;top:max(10px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));font-size:24px;line-height:1}#context-actions{position:fixed;z-index:10;left:max(10px,env(safe-area-inset-left));bottom:max(10px,env(safe-area-inset-bottom));display:flex;gap:8px;pointer-events:none}#context-actions button{pointer-events:auto;display:flex;justify-content:center;align-items:center;gap:9px;min-width:112px;width:auto;height:56px;padding:0 14px;font-size:14px;font-weight:600}#native-action{min-width:140px!important}#context-actions .action-label{white-space:nowrap}#context-actions svg{width:25px;height:25px;flex:none}#context-actions[hidden],#native-action[hidden],#target-confirm[hidden],#target-cancel[hidden]{display:none}#native-action[data-action="confirm-devastator"]{color:#efd6b0}body.dragging #canvas{cursor:grabbing}body.placing #canvas{cursor:grabbing}#launch{position:fixed;inset:0;display:grid;place-content:center;text-align:center;background:#000;z-index:20;touch-action:none}#launch[hidden]{display:none}h1{font:24px Georgia,serif;font-weight:400;margin:0 0 12px}#launch small{color:#888;letter-spacing:2px;font-size:10px}#launch button{margin:28px auto 0;padding:12px 32px;touch-action:manipulation}#status{color:#aaa;margin-top:16px}#message{position:fixed;bottom:max(68px,calc(env(safe-area-inset-bottom) + 68px));left:10px;max-width:calc(100% - 20px);background:#111e;padding:7px 10px;color:#ddd;font-size:12px;pointer-events:none;z-index:11}#message:empty{display:none}@media(pointer:coarse){.game-control{width:52px;height:52px}#context-actions button{height:60px}}@media(max-width:360px){#context-actions{gap:8px}#context-actions button{min-width:96px;padding:0 9px;font-size:13px}#native-action{min-width:124px!important}}
 
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 2px; }
-  .logo { font: 800 26px/1 ui-serif, Georgia, serif; letter-spacing: .22em; color: var(--accent); text-transform: uppercase; }
-  .chip { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
-          border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
-
-  .card { background: linear-gradient(180deg, var(--panel) 0%, #17100a 100%);
-          border: 1px solid var(--line); border-radius: 20px; padding: 22px 20px; }
-  .card.center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
-
-  .hidden { display: none !important; }
-
-  /* --- choose ROM --- */
-  .cart { width: 86px; height: 104px; position: relative; border: 3px solid #5b4426; border-radius: 10px 10px 6px 6px;
-          background: linear-gradient(180deg, #2b1f10, #1d150b); }
-  .cart::before { content: ""; position: absolute; inset: 8px 8px 34px; border-radius: 4px;
-                  background: repeating-linear-gradient(90deg, #3c2d18 0 6px, #2a1f11 6px 12px); }
-  .cart::after { content: "ROM"; position: absolute; left: 0; right: 0; bottom: 8px; text-align: center;
-                 font: 700 11px/1 ui-monospace, monospace; letter-spacing: .18em; color: var(--muted); }
-  .cart.small { transform: scale(.6); margin: -18px; }
-
-  .title { font-size: 21px; font-weight: 700; margin: 0; }
-  .hint { color: var(--muted); font-size: 14px; margin: 0; max-width: 34ch; }
-
-  .btn { -webkit-appearance: none; appearance: none; border: 0; border-radius: 14px; cursor: pointer;
-         font: inherit; font-weight: 700; color: #1a130c; background: var(--accent);
-         min-height: 54px; padding: 0 22px; width: 100%; display: inline-flex; align-items: center;
-         justify-content: center; gap: 10px; transition: transform .08s ease, filter .15s ease; }
-  .btn:active { transform: scale(.985); }
-  .btn[disabled] { opacity: .4; pointer-events: none; }
-  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
-  .btn.small { min-height: 44px; width: auto; padding: 0 16px; font-size: 14px; }
-  .btn .icon { width: 20px; height: 20px; flex: 0 0 auto; }
-
-  .drop { border: 2px dashed #4a3820; border-radius: 16px; padding: 26px 16px; width: 100%;
-          display: flex; flex-direction: column; align-items: center; gap: 14px; cursor: pointer;
-          transition: border-color .15s ease, background .15s ease; }
-  .drop.over { border-color: var(--accent); background: #221809; }
-
-  /* --- progress --- */
-  .ring { width: 132px; height: 132px; position: relative; }
-  .ring svg { transform: rotate(-90deg); }
-  .ring .pct { position: absolute; inset: 0; display: grid; place-items: center; font: 700 26px/1 ui-monospace, monospace; color: var(--accent); }
-  .steps { display: flex; gap: 6px; justify-content: center; width: 100%; margin-top: 4px; }
-  .steps i { width: 8px; height: 8px; border-radius: 50%; background: #3a2c1a; }
-  .steps i.on { background: var(--accent); }
-
-  /* --- result --- */
-  .badge { width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center;
-           background: #1d2a17; border: 2px solid #3f6a35; color: var(--ok); }
-  .badge.bad { background: #2a1714; border-color: #6a3530; color: var(--bad); }
-  .badge svg { width: 38px; height: 38px; }
-
-  .row { display: flex; gap: 10px; width: 100%; }
-  .row > * { flex: 1; }
-
-  /* --- saves sheet --- */
-  .sheet { position: fixed; inset: 0; background: rgba(8, 5, 2, .72); display: flex; align-items: flex-end;
-           justify-content: center; z-index: 20; padding: 0; }
-  .sheet .inner { width: 100%; max-width: 520px; background: var(--panel-2); border: 1px solid var(--line);
-                  border-radius: 22px 22px 0 0; padding: 20px; display: flex; flex-direction: column; gap: 12px;
-                  padding-bottom: max(20px, env(safe-area-inset-bottom)); }
-  .sheet h2 { margin: 0; font-size: 17px; }
-  .sheet .status { color: var(--muted); font-size: 13px; margin: 0; min-height: 18px; }
-
-  /* --- details --- */
-  details { width: 100%; }
-  details summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 6px 2px; list-style: none; }
-  details summary::-webkit-details-marker { display: none; }
-  details .box { background: #140e08; border: 1px solid var(--line); border-radius: 12px; padding: 12px;
-                 font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-  details .box b { color: var(--text); font-weight: 600; }
-  details pre { margin: 8px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font-size: 11px; }
-
-  /* --- game --- */
-  .game { position: fixed; inset: 0; background: #000; z-index: 10; display: flex; align-items: center;
-          justify-content: center; overflow: hidden; }
-  .game-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-  #game-canvas { display: block; width: 100%; height: 100%; object-fit: contain;
-                 image-rendering: pixelated; background: #000; touch-action: none; }
-  .game-loading { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
-                  align-items: center; justify-content: center; color: var(--muted); font-size: 14px;
-                  background: #000; }
-  .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #3a2c1a;
-             border-top-color: var(--accent); animation: spin 1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .game-top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; z-index: 3; }
-  .building-mode .game-controls, .building-mode .hud, .building-mode .game-top { display: none; }
-  .building-cells { position: absolute; z-index: 5; }
-  .building-cells button { position: absolute; padding: 0; margin: 0; border: 0; background: transparent;
-                           border-radius: 3px; pointer-events: auto; }
-  .building-cells button:focus-visible { outline: 2px solid #ffd873; }
-  .building-cells button:active { background: rgba(255,216,115,.28); }
-  .hud { position: absolute; right: 14px; bottom: 154px; display: flex; flex-direction: column;
-         gap: 10px; align-items: flex-end; z-index: 4; }
-  .hud-btn { min-width: 92px; height: 46px; padding: 0 16px; border-radius: 23px; border: 1px solid #caa54a;
-             background: #2a2210; color: #ffd873; font: 600 14px/1 system-ui, sans-serif; letter-spacing: .06em;
-             box-shadow: 0 2px 0 rgba(0,0,0,.55); }
-  .hud-btn.ghost { background: rgba(20,16,8,.85); color: #e7cf96; }
-  .hud-btn:active { transform: translateY(1px); }
-  .hud-btn[hidden] { display: none; }
-  @media (orientation: landscape) { .hud { bottom: 122px; right: 24px; } }
-  .game-controls { position: absolute; inset: auto 0 max(12px, env(safe-area-inset-bottom)) 0;
-                   display: flex; justify-content: space-between; align-items: flex-end;
-                   padding: 0 16px; z-index: 3; pointer-events: none; }
-  .game-controls > * { pointer-events: auto; }
-  .dpad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px);
-          gap: 6px; opacity: .82; }
-  .dpad button[data-pad="1"] { grid-column: 2; grid-row: 1; }
-  .dpad button[data-pad="4"] { grid-column: 1; grid-row: 2; }
-  .dpad button[data-pad="2"] { grid-column: 2; grid-row: 2; }
-  .dpad button[data-pad="8"] { grid-column: 3; grid-row: 2; }
-  .action-pad { display: flex; gap: 10px; align-items: flex-end; opacity: .82;
-                position: relative; padding-right: 130px; }
-  .game-btn { width: 48px; height: 48px; border-radius: 12px; border: 1px solid #4a3820;
-              background: rgba(30, 22, 12, .78); color: #e8d8b8; font: 700 14px/1 inherit;
-              display: grid; place-items: center; backdrop-filter: blur(4px); }
-  .game-btn:active { background: rgba(240, 200, 112, .35); }
-  .game-btn.round { border-radius: 50%; }
-  .game-btn.wide { width: auto; padding: 0 16px; height: 42px; border-radius: 21px; font-size: 12px;
-                   letter-spacing: .08em; }
-  .game-btn.ghost { background: rgba(10, 8, 5, .5); width: 40px; height: 40px; border-radius: 50%;
-                    font-size: 15px; }
-  .game-top-right { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 3; }
-  /* The canvas keeps its pixel aspect and is fitted to the viewport, like the
-     old port: portrait shows a tall 320x~690 world view, landscape 485x224. */
-  @media (orientation: portrait) { .game-controls { padding: 0 10px; } }
-  @media (orientation: landscape) { .game-controls { padding: 0 24px; } }
-
-  .lang { margin-left: auto; border: 1px solid #4a3820; background: rgba(30,22,12,.8); color: #e8d8b8;
-          border-radius: 10px; padding: 4px 10px; font: 700 12px/1 inherit; letter-spacing: .08em; }
-  .lang:active { background: rgba(240,200,112,.3); }
-
-  /* --- fatal error screen (must cover a black canvas, never leave it blank) --- */
-  #screen-error.fatal {
-    position: fixed; inset: 0; z-index: 50; width: 100%; max-width: none; border-radius: 0;
-    overflow-y: auto; justify-content: center; gap: 12px;
-    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
-    background: radial-gradient(120% 80% at 50% 0%, #1d1509 0%, var(--bg) 70%);
-  }
-  #error-details { width: 100%; max-height: 170px; overflow: auto; text-align: left; margin: 0;
-                   white-space: pre-wrap; overflow-wrap: anywhere; background: #140e08;
-                   border: 1px solid var(--line); border-radius: 12px; padding: 10px;
-                   font: 11px/1.4 ui-monospace, monospace; color: var(--muted); }
-  #error-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-  #error-copy-status { color: var(--ok); font-size: 12px; min-height: 16px; margin: 0; }
-  body.fatal-error main > section:not(#screen-error) { display: none !important; }
-  body.fatal-error .sheet { display: none !important; }
-  #nosw-banner { position: fixed; left: 0; right: 0; top: 0; z-index: 60; background: #6a3530; color: #fff;
-                 padding: max(8px, env(safe-area-inset-top)) 14px 8px; font-size: 12px; text-align: center; }
-  #nosw-banner a { color: #ffd873; }
-  .help h3 { margin: 14px 0 4px; font-size: 13px; color: #caa54a; letter-spacing: .06em; text-transform: uppercase; }
-  .help p { margin: 0 0 8px; font-size: 14px; line-height: 1.45; color: #e6d7bb; }
-  footer { color: #6d5c43; font-size: 11px; text-align: center; padding: 6px 0 0; }
-  footer a { color: #8a765a; }
-
-  @media (max-width: 420px) { .title { font-size: 19px; } .card { padding: 20px 16px; } }
-</style>
+#install-gate{position:fixed;inset:0;z-index:90;background:#000;overflow:auto;display:flex;flex-direction:column;align-items:center;padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));color:#fff;font:16px/1.45 monospace;text-align:center}
+#install-gate [hidden],#install-gate[hidden]{display:none}
+#install-gate>div{margin:auto 0;width:min(100%,440px);display:grid;justify-items:center;gap:16px}
+#install-gate img{width:min(240px,75vw);height:auto;image-rendering:pixelated}
+#install-gate h1,#install-gate p{margin:0}
+#install-gate h1{font-size:22px}
+#install-application{padding:8px 20px;background:#9393b6;border:2px outset #ddd;color:#000;font:bold 15px monospace;min-height:48px}
+#launch{z-index:90;justify-items:center;align-content:center;gap:20px;padding:24px;isolation:isolate;background:#000;font:14px monospace;letter-spacing:1px}
+#launch .boot-logo{width:min(320px,75vw);height:auto;image-rendering:pixelated;margin:0 0 12px}
+#launch h1,#launch p{margin:0;text-align:center;font:14px monospace;color:#fff}
+#launch canvas{display:block;max-width:calc(100vw - 40px);height:auto;image-rendering:pixelated}
+#launch [hidden]{display:none!important}.boot-accessible{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0);white-space:nowrap}
+#boot-progress{width:min(256px,70vw);height:8px;background:#242442;border:1px solid #9393b6;overflow:hidden}
+#boot-fill{display:block;height:100%;width:0;background:#00b600}
+.boot-indeterminate #boot-fill{width:32%;animation:boot-progress 1.3s ease-in-out infinite alternate}
+#launch #boot-retry{margin:0;padding:12px 24px;background:#9393b6;border:2px outset #ddd;color:#000;font:14px monospace;min-height:48px}
+@keyframes boot-progress{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
+@media(prefers-reduced-motion:reduce){.boot-indeterminate #boot-fill{animation:none;width:100%;opacity:.5}}
+</style><link rel="stylesheet" href="modern-ui.css?v=20261113-feedback" media="print" fetchpriority="high" data-ui-style="pending" onload="this.media='all';this.dataset.uiStyle='ready'" onerror="this.dataset.uiStyle='error'"><link rel="stylesheet" href="scene-flow.css?v=20261123-install-first" media="print" fetchpriority="high" data-ui-style="pending" onload="this.media='all';this.dataset.uiStyle='ready'" onerror="this.dataset.uiStyle='error'"></head><body>
+<canvas id="canvas" tabindex="0" aria-label="Оригинальная Dune Sega USA"></canvas>
+<div id="launch" data-boot-state="loading" role="status" aria-live="polite">
+<img class="boot-logo" src="./ui-assets/screen-assets/art/title-logo.png" width="192" height="56" alt="Dune — The Battle for Arrakis">
+<h1 id="boot-label">LOADING DUNE</h1><canvas id="boot-heading" hidden aria-hidden="true"></canvas>
+<p id="boot-text">PREPARING GAME</p><canvas id="boot-bitmap" hidden aria-hidden="true"></canvas>
+<div id="boot-progress" class="boot-indeterminate" role="progressbar" aria-label="Original graphics"><span id="boot-fill"></span></div>
+<button id="boot-retry" hidden>TRY AGAIN</button><button id="start" hidden>Запустить игру</button><p id="status" class="boot-accessible"></p>
+</div>
+<main id="install-gate" hidden>
+<div>
+<img src="./ui-assets/screen-assets/art/title-logo.png" width="192" height="56" alt="Dune — The Battle for Arrakis">
+<h1>INSTALL DUNE</h1>
+<button id="install-application" type="button" hidden>INSTALL GAME</button>
+<p id="install-hint" aria-live="polite"></p>
+<p id="install-open">Open Dune from its icon to play.</p>
+</div>
+</main>
+<button id="native-menu" class="game-control" hidden aria-label="Пауза — меню игры (Start)" title="Пауза — оригинальное меню игры">⋯</button>
+<button id="global-fullscreen" class="game-control" hidden aria-label="FULL SCREEN" title="Full screen"></button>
+<div id="context-actions" role="group" aria-label="Действия выбранного объекта" hidden>
+<button id="target-cancel" class="game-control" aria-label="Reset target" hidden></button>
+<button id="target-confirm" class="game-control" aria-label="Confirm target" hidden></button>
+<button id="native-action" class="game-control" aria-label="Действие оригинальной кнопки B" title="Действие оригинальной кнопки B" hidden></button>
+</div>
+<div id="message" role="status"></div>
+<output id="native-state" hidden></output><output id="camera-state" hidden></output><output id="selection-state" hidden></output><output id="gesture-state" hidden></output><output id="layout-state" hidden></output><output id="menu-state" hidden></output>
+<output id="target-state" hidden></output>
+<output id="campaign-state" hidden></output><output id="building-ui-state" hidden></output><output id="interface-state" hidden></output>
+<!-- BEGIN GENERATED STARTUP -->
+<script id="startup-font" type="application/json">{"en":{"image":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAAAgCAYAAADaInAlAAADmUlEQVR42tVb7VLDMAzzw/D+P3m9cHCMG10sS7LbbbvrAQ1N0lj+kO1FCJ/1+/n+Nbu/+59qHM2t7i2bQ9mDOvZuH/s9zgLA2nxu49V8DsCYPSAAOACfAPmk8EcBcBv6vb8VTibkw5zHKwpArJ18DmN//7DZXwaq7TsCAZfrvwIAmD12TMc/geyEkwm80L6VHP7KXqyYJzKAMMLJAMlYscrKsMJzQNQWvotg5oCAkANoaGp+nZd0AbADcWbFWDeDrEdXBrbwj4JywLfTYnAwqXlm5utoyAkxAHJ3qoWVnp0UfnQPNzkgyryDuGCRLkDCgHiQqxIQeX52jKBazmvpA3dAyv2V+PRSCOI+2bFJC+rOr54r9tMsgqtnleCnE0B1ArCO+VcU5FksAL4/ispRpJ1pBgrw2CRMQftYCketX8UQSowxCQAFxMSc+Rkgjcm4LlrMOQTkv1ntZUwnEU/If4vmttynY8VUdpACYIqmoCiVDehUDRbd10IWEiWZzjLjLE1GyTL2DP69I5GdcyLNVDucRAqTiGHcF0Gf1GTUpAvI8gmOBeCVYPewAgCVZogargKATR3T8ylCHIoB6HT6JgZQYgGcrEPpVhedDFiM5+E4y72Nd7diAMF9KDTXVT6bpzubc1Ha2VsYa6rzu3z9KfWgdP2Pz7Vul5MGVXi0E+VP8nw1ynfyGN3+CJc1MVb0Ya07of9c9yDo8mSx3Nt+vjkeJAUu3clEXgFVOkEBLKRayb3w7y3A7WeXJ6sInwzKJtafKhdnIFKtCgLAbp3y/Y4CP1oBVkBuENaYX0pFqwd8Vr9AkcUsC2lIwIwLsgHApmpPtgBqGjgUcxkDPYtqu5p4PnQ5XAYA6QLWm7uA5a6H7gfZrzihIEx5XQIA0v6miaZSqawLUZpGGSs/yAJUFwjNttoUyyTnmDzGAjQQ8fIOT2efV/IMTj8CM990HmKRl/q8kkvxefzZeYBJ1tHVIMcCKlZEjS3Gi1HTPN+o58N+uVcHAFvL6JZy2UKZDIyzNa7RbRtXACDEJlOz5Byo3G10G819c0nl8YPFmssBwETOarFJrYoKXyyR2U44TaUiz5YTHWw9/WwAsHGGkwpudCUFCwKG7VjFKjUThSxEp2XMBQBLw6pcOtsT2dX8qinEbVxVLDzsCawKHG4QKJpQmsdXGipm0tjGF/6AdQFeC4ALeDTbD8COTX+vwOHuzN7UXIKzZ7UH4OH6AtyLZ33pT7t/AAAAAElFTkSuQmCC","glyphs":{"32":{"x":0,"y":0,"width":8,"height":8,"char":" ","nativeTile":1184},"33":{"x":8,"y":0,"width":8,"height":8,"char":"!","nativeTile":1185},"34":{"x":16,"y":0,"width":8,"height":8,"char":"\"","nativeTile":1186},"35":{"x":24,"y":0,"width":8,"height":8,"char":"#","nativeTile":1187},"36":{"x":32,"y":0,"width":8,"height":8,"char":"$","nativeTile":1188},"37":{"x":40,"y":0,"width":8,"height":8,"char":"%","nativeTile":1189},"38":{"x":48,"y":0,"width":8,"height":8,"char":"&","nativeTile":1190},"39":{"x":56,"y":0,"width":8,"height":8,"char":"'","nativeTile":1191},"40":{"x":64,"y":0,"width":8,"height":8,"char":"(","nativeTile":1192},"41":{"x":72,"y":0,"width":8,"height":8,"char":")","nativeTile":1193},"42":{"x":80,"y":0,"width":8,"height":8,"char":"*","nativeTile":1194},"43":{"x":88,"y":0,"width":8,"height":8,"char":"+","nativeTile":1195},"44":{"x":96,"y":0,"width":8,"height":8,"char":",","nativeTile":1196},"45":{"x":104,"y":0,"width":8,"height":8,"char":"-","nativeTile":1197},"46":{"x":112,"y":0,"width":8,"height":8,"char":".","nativeTile":1198},"47":{"x":120,"y":0,"width":8,"height":8,"char":"/","nativeTile":1199},"48":{"x":0,"y":8,"width":8,"height":8,"char":"0","nativeTile":1200},"49":{"x":8,"y":8,"width":8,"height":8,"char":"1","nativeTile":1201},"50":{"x":16,"y":8,"width":8,"height":8,"char":"2","nativeTile":1202},"51":{"x":24,"y":8,"width":8,"height":8,"char":"3","nativeTile":1203},"52":{"x":32,"y":8,"width":8,"height":8,"char":"4","nativeTile":1204},"53":{"x":40,"y":8,"width":8,"height":8,"char":"5","nativeTile":1205},"54":{"x":48,"y":8,"width":8,"height":8,"char":"6","nativeTile":1206},"55":{"x":56,"y":8,"width":8,"height":8,"char":"7","nativeTile":1207},"56":{"x":64,"y":8,"width":8,"height":8,"char":"8","nativeTile":1208},"57":{"x":72,"y":8,"width":8,"height":8,"char":"9","nativeTile":1209},"58":{"x":80,"y":8,"width":8,"height":8,"char":":","nativeTile":1210},"59":{"x":88,"y":8,"width":8,"height":8,"char":";","nativeTile":1211},"60":{"x":96,"y":8,"width":8,"height":8,"char":"<","nativeTile":1212},"61":{"x":104,"y":8,"width":8,"height":8,"char":"=","nativeTile":1213},"62":{"x":112,"y":8,"width":8,"height":8,"char":">","nativeTile":1214},"63":{"x":120,"y":8,"width":8,"height":8,"char":"?","nativeTile":1215},"64":{"x":0,"y":16,"width":8,"height":8,"char":"@","nativeTile":1216},"65":{"x":8,"y":16,"width":8,"height":8,"char":"A","nativeTile":1217},"66":{"x":16,"y":16,"width":8,"height":8,"char":"B","nativeTile":1218},"67":{"x":24,"y":16,"width":8,"height":8,"char":"C","nativeTile":1219},"68":{"x":32,"y":16,"width":8,"height":8,"char":"D","nativeTile":1220},"69":{"x":40,"y":16,"width":8,"height":8,"char":"E","nativeTile":1221},"70":{"x":48,"y":16,"width":8,"height":8,"char":"F","nativeTile":1222},"71":{"x":56,"y":16,"width":8,"height":8,"char":"G","nativeTile":1223},"72":{"x":64,"y":16,"width":8,"height":8,"char":"H","nativeTile":1224},"73":{"x":72,"y":16,"width":8,"height":8,"char":"I","nativeTile":1225},"74":{"x":80,"y":16,"width":8,"height":8,"char":"J","nativeTile":1226},"75":{"x":88,"y":16,"width":8,"height":8,"char":"K","nativeTile":1227},"76":{"x":96,"y":16,"width":8,"height":8,"char":"L","nativeTile":1228},"77":{"x":104,"y":16,"width":8,"height":8,"char":"M","nativeTile":1229},"78":{"x":112,"y":16,"width":8,"height":8,"char":"N","nativeTile":1230},"79":{"x":120,"y":16,"width":8,"height":8,"char":"O","nativeTile":1231},"80":{"x":0,"y":24,"width":8,"height":8,"char":"P","nativeTile":1232},"81":{"x":8,"y":24,"width":8,"height":8,"char":"Q","nativeTile":1233},"82":{"x":16,"y":24,"width":8,"height":8,"char":"R","nativeTile":1234},"83":{"x":24,"y":24,"width":8,"height":8,"char":"S","nativeTile":1235},"84":{"x":32,"y":24,"width":8,"height":8,"char":"T","nativeTile":1236},"85":{"x":40,"y":24,"width":8,"height":8,"char":"U","nativeTile":1237},"86":{"x":48,"y":24,"width":8,"height":8,"char":"V","nativeTile":1238},"87":{"x":56,"y":24,"width":8,"height":8,"char":"W","nativeTile":1239},"88":{"x":64,"y":24,"width":8,"height":8,"char":"X","nativeTile":1240},"89":{"x":72,"y":24,"width":8,"height":8,"char":"Y","nativeTile":1241},"90":{"x":80,"y":24,"width":8,"height":8,"char":"Z","nativeTile":1242},"91":{"x":88,"y":24,"width":8,"height":8,"char":"[","nativeTile":1243},"92":{"x":96,"y":24,"width":8,"height":8,"char":"\\","nativeTile":1244},"93":{"x":104,"y":24,"width":8,"height":8,"char":"]","nativeTile":1245},"94":{"x":112,"y":24,"width":8,"height":8,"char":"^","nativeTile":1246},"95":{"x":120,"y":24,"width":8,"height":8,"char":"_","nativeTile":1247}}},"ru":{"image":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAAAYCAYAAAAyC/XlAAACHUlEQVR42u1Zi27DMAj0//+0u0qttLnA3QHbpASkSo3fgfPxyFpfsg95Nq2XbEfeY6I+Zr43Llrf6n///T7FW8M6n9eG1s+sab03sz8an9L/0YA2PH/l+d4amf0JA0kKteYjABjjaQOdQ5nzqvpHAFiMgiIEq/O9OcL8COEIsCtiC8QmCGyKgbx3UPUr20NRCEsxkcKzAIjch3VzIhcTMQhjYNQWUb/qwhQXWAIAuUG1v8oA0LgRSNj4IAMKNh5gXGTFhVUZ4Pcph+FvoFQPPIxREKVHAPgLA6lB4H+6gN3hAtgbUMgClPNtIghcAKAlH57IAiT9m/sdtBo9WxSs9JsYENbcwvnQmMz+Hf3oWZ2vvt/P50yOns3TESNU8/QuF6X4dRB3hPl/1k0qMQa0UUMe7+bLHQe8OwAU+xD6+2zryOOZShfrw8VIe2dimE4AoEC1gQHoC2UV0+D5O/J4MK4KgDDPzwRJmTxcKTUzZWi11lFYf0suABUyEgBYLv2QAKhG1cr+FQCgNNG5rSyj0Oc/ARZeArXUm3UB6g1tqsVLpesmAKwiANKAZ1gCxgBirT3lArxUBQYswAcT1UA6RkB1CIuhoqIR88HL+5ah1DGi/V0WAXk6k/eiddBcNidnctutBFVCzcHbQ8nbrfZsXSFbx/FrAUzpdeSasoVbOnIpywv+c+TCABgGGAaY2z8MMLf/7gAYGRcwgLiTPAAIj0KtBMSpawAAAABJRU5ErkJggg==","glyphs":{"1040":{"x":0,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":65},"1072":{"x":0,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":65},"1041":{"x":8,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":100},"1073":{"x":8,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":100},"1042":{"x":16,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":66},"1074":{"x":16,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":66},"1043":{"x":24,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":102},"1075":{"x":24,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":102},"1044":{"x":32,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":103},"1076":{"x":32,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":103},"1045":{"x":40,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":69},"1077":{"x":40,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":69},"1046":{"x":48,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":105},"1078":{"x":48,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":105},"1047":{"x":56,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":106},"1079":{"x":56,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":106},"1048":{"x":64,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":108},"1080":{"x":64,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":108},"1049":{"x":72,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":110},"1081":{"x":72,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":110},"1050":{"x":80,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":75},"1082":{"x":80,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":75},"1051":{"x":88,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":113},"1083":{"x":88,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":113},"1052":{"x":96,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":77},"1084":{"x":96,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":77},"1053":{"x":104,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":72},"1085":{"x":104,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":72},"1054":{"x":112,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":79},"1086":{"x":112,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":79},"1055":{"x":120,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":115},"1087":{"x":120,"y":0,"w":8,"h":8,"width":8,"height":8,"nativeByte":115},"1056":{"x":0,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":80},"1088":{"x":0,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":80},"1057":{"x":8,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":67},"1089":{"x":8,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":67},"1058":{"x":16,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":84},"1090":{"x":16,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":84},"1059":{"x":24,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":117},"1091":{"x":24,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":117},"1060":{"x":32,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":118},"1092":{"x":32,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":118},"1061":{"x":40,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":88},"1093":{"x":40,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":88},"1062":{"x":48,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":119},"1094":{"x":48,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":119},"1063":{"x":56,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":121},"1095":{"x":56,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":121},"1064":{"x":64,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":122},"1096":{"x":64,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":122},"1065":{"x":72,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":97},"1097":{"x":72,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":97},"1066":{"x":80,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":101},"1098":{"x":80,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":101},"1067":{"x":88,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":99},"1099":{"x":88,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":99},"1068":{"x":96,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":98},"1100":{"x":96,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":98},"1069":{"x":104,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":104},"1101":{"x":104,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":104},"1070":{"x":112,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":107},"1102":{"x":112,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":107},"1071":{"x":120,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":114},"1103":{"x":120,"y":8,"w":8,"h":8,"width":8,"height":8,"nativeByte":114},"1025":{"x":0,"y":16,"w":8,"h":8,"width":8,"height":8,"nativeByte":null},"1105":{"x":0,"y":16,"w":8,"h":8,"width":8,"height":8,"nativeByte":null}}}}</script>
 <script>
-/* DUNE BYOP shell bootstrap.
- *
- * Runs before app.mjs and stays useful even when app.mjs fails to load, so a
- * broken/stale shell shows a readable error screen instead of a black canvas.
- *
- * Keep BUILD in sync with VERSION in ./sw.js and APP_BUILD in ./app.mjs.
- */
-(function () {
-  'use strict';
-
-  var BUILD = 'dune-byop-v3';
-  var REPAIR_KEY = 'dune-shell-repair';
-  var NOSW_KEY = 'dune-nosw-reload';
-  var errors = (window.__DUNE_ERRORS__ = window.__DUNE_ERRORS__ || []);
-  var params = new URLSearchParams(location.search);
-  var noSw = params.get('nosw') === '1';
-  var repairing = false;
-  var fatalShown = false;
-
-  window.__DUNE_SHELL_BUILD__ = BUILD;
-  window.__DUNE_NO_SW__ = noSw;
-
-  function $(id) { return document.getElementById(id); }
-
-  function whenBodyReady(fn) {
-    if (document.body) { fn(); return; }
-    document.addEventListener('DOMContentLoaded', fn, { once: true });
+// This tiny classic script is embedded in the first HTML response. It does not
+// wait for modules, game code, network fonts or the original engine to run.
+(()=>{
+ const panel=document.getElementById('launch'),label=document.getElementById('boot-label'),heading=document.getElementById('boot-heading'),text=document.getElementById('boot-text'),canvas=document.getElementById('boot-bitmap'),bar=document.getElementById('boot-progress'),fill=document.getElementById('boot-fill'),retry=document.getElementById('boot-retry');
+ if(!panel||!text)return;
+ panel.dataset.startedMs=String(Math.round(window.performance?.now?.()||0));
+ let russian=false;try{russian=localStorage.getItem('dune-sega-language-v1')==='ru';}catch{}
+ const words=russian?{loading:'ЗАГРУЗКА DUNE',catalogue:'ПОДГОТОВКА ГРАФИКИ',interface:'ПОДГОТОВКА ИНТЕРФЕЙСА',graphics:'ГРАФИКА',offline:'ЗАГРУЗКА ДЛЯ ИГРЫ БЕЗ СЕТИ',engine:'ПОДГОТОВКА ИГРЫ',error:'НЕ УДАЛОСЬ ЗАГРУЗИТЬ ИГРУ',retry:'ПОВТОРИТЬ',connection:'ПРОВЕРЬТЕ ПОДКЛЮЧЕНИЕ И ПОВТОРИТЕ ПОПЫТКУ'}:{loading:'LOADING DUNE',catalogue:'PREPARING GRAPHICS',interface:'PREPARING INTERFACE',graphics:'GRAPHICS',offline:'DOWNLOADING OFFLINE GAME',engine:'PREPARING GAME',error:'COULD NOT LOAD THE GAME',retry:'TRY AGAIN',connection:'CHECK YOUR CONNECTION AND TRY AGAIN'};
+ const font=JSON.parse(document.getElementById('startup-font').textContent),images={};
+ let complete=false,failed=false,frame=0,last='',styles;
+ const line=(target,value)=>{
+  if(!target)return;target.width=Math.max(8,value.length*8);target.height=10;target.style.width=Math.min(480,value.length*16)+'px';
+  const c=target.getContext('2d');if(!c)return;c.imageSmoothingEnabled=false;
+  for(let i=0;i<value.length;i++){
+   const code=value.charCodeAt(i),locale=code>126?'ru':'en',g=font[locale]?.glyphs[code]||font.en.glyphs[63];
+   if(g&&images[locale])c.drawImage(images[locale],g.x,g.y,8,8,i*8,0,8,8);
   }
-
-  function pushError(kind, message, detail) {
-    var entry = {
-      at: new Date().toISOString(),
-      kind: kind,
-      message: String(message == null ? '' : message).slice(0, 2000),
-      detail: detail ? String(detail).slice(0, 4000) : '',
+  target.hidden=false;
+ };
+ const draw=()=>{
+  frame=0;if(complete||!canvas||!images.en||russian&&!images.ru)return;
+  const value=label.textContent+':'+text.textContent;if(value===last)return;last=value;
+  line(heading,label.textContent);line(canvas,text.textContent);label.classList.add('boot-accessible');text.classList.add('boot-accessible');
+ };
+ const paint=()=>{if(!frame)frame=requestAnimationFrame(draw);};
+ const set=value=>{if(complete)return;text.textContent=value;paint();};
+ label.textContent=words.loading;retry.textContent=words.retry;set(words.catalogue);
+ for(const locale of ['en','ru']){const image=new Image();image.onload=()=>{images[locale]=image;last='';paint();};image.src=font[locale].image;}
+ retry.addEventListener('click',()=>location.reload());
+ const api=window.duneStartup={
+  stylesReady(){
+   if(styles)return styles;
+   const links=[...document.querySelectorAll('link[data-ui-style]')];
+   if(!failed&&links.some(link=>link.dataset.uiStyle==='pending'))set(words.interface);
+   styles=new Promise((resolve,reject)=>{
+    let done=false,timer;
+    const finish=error=>{if(done)return;done=true;if(timer)clearTimeout(timer);for(const link of links){link.removeEventListener('load',check);link.removeEventListener('error',check);}if(error){api.fail();reject(error);}else resolve();};
+    const check=()=>{
+     if(links.some(link=>link.dataset.uiStyle==='error'))return finish(Error('Interface stylesheet failed to load'));
+     if(links.every(link=>link.dataset.uiStyle==='ready'))finish();
     };
-    errors.push(entry);
-    if (errors.length > 60) errors.shift();
-    try { console.error('[dune] ' + kind + ': ' + entry.message); } catch (e) { /* logging only */ }
-    return entry;
-  }
-  window.__DUNE_RECORD_ERROR__ = pushError;
-
-  /* ---------------------------------------------------- cache self-repair -- */
-
-  function purgeShell() {
-    var tasks = [];
-    try {
-      if ('serviceWorker' in navigator) {
-        tasks.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
-          return Promise.all(regs.map(function (reg) { return reg.unregister(); }));
-        }).catch(function () { /* no registrations */ }));
-      }
-    } catch (e) { /* service workers unavailable */ }
-    try {
-      if (window.caches && caches.keys) {
-        tasks.push(caches.keys().then(function (keys) {
-          return Promise.all(keys.map(function (key) { return caches.delete(key); }));
-        }).catch(function () { /* no caches */ }));
-      }
-    } catch (e) { /* caches unavailable */ }
-    return Promise.all(tasks);
-  }
-  window.__dunePurgeShell = purgeShell;
-
-  function reloadClean() {
-    return purgeShell().then(function () { location.reload(); }, function () { location.reload(); });
-  }
-  window.__duneReloadClean = reloadClean;
-
-  function readRepairs() {
-    try { return JSON.parse(sessionStorage.getItem(REPAIR_KEY) || '{}') || {}; } catch (e) { return {}; }
-  }
-  function writeRepairs(value) {
-    try { sessionStorage.setItem(REPAIR_KEY, JSON.stringify(value)); } catch (e) { /* private mode */ }
-  }
-  function canAutoRepair() {
-    var state = readRepairs();
-    return !state.at || (Date.now() - state.at > 120000);
-  }
-  function noteRepair(reason) {
-    var state = readRepairs();
-    state.count = (state.count || 0) + 1;
-    state.at = Date.now();
-    state.reason = String(reason || '').slice(0, 300);
-    writeRepairs(state);
-  }
-
-  /* A stale service worker (from an older deploy) can serve old modules while
-   * index.html comes fresh from the network.  The controller must answer with
-   * the same BUILD as this page; otherwise drop the SW + caches and reload. */
-  function selfHeal(reason) {
-    if (noSw || repairing) return false;
-    pushError('self-heal', reason || 'stale shell cache');
-    if (!canAutoRepair()) {
-      showFatal(
-        'Оболочка сайта устарела и не обновилась автоматически.',
-        'Причина: ' + reason + '\nНажмите «Перезагрузить без кэша»: Service Worker будет снят, а кэш удалён.',
-        { kind: 'self-heal-failed', force: true, title: 'Нужна перезагрузка без кэша' },
-      );
-      return false;
-    }
-    repairing = true;
-    noteRepair(reason);
-    purgeShell().then(function () { location.reload(); }, function () { location.reload(); });
-    return true;
-  }
-  window.__duneSelfHeal = selfHeal;
-
-  function pingController() {
-    return new Promise(function (resolve) {
-      var sw = navigator.serviceWorker;
-      if (!sw || !sw.controller) { resolve(null); return; }
-      var channel = new MessageChannel();
-      var timer = setTimeout(function () { resolve(null); }, 1500);
-      channel.port1.onmessage = function (event) { clearTimeout(timer); resolve(event.data || null); };
-      try { sw.controller.postMessage({ type: 'DUNE_PING' }, [channel.port2]); }
-      catch (e) { clearTimeout(timer); resolve(null); }
-    });
-  }
-
-  function checkControllerVersion() {
-    if (noSw || !('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
-    pingController().then(function (reply) {
-      if (!reply || reply.version !== BUILD) {
-        selfHeal('Service Worker "' + (reply && reply.version ? reply.version : 'unknown') + '" != shell "' + BUILD + '"');
-      }
-    });
-  }
-
-  function checkAppBuild() {
-    if (noSw) return;
-    if (window.__DUNE_APP_BUILD__ !== BUILD) {
-      selfHeal('app "' + String(window.__DUNE_APP_BUILD__) + '" != shell "' + BUILD + '"');
-    }
-  }
-
-  /* ------------------------------------------------ visible error screen -- */
-
-  function showFatal(message, detail, options) {
-    var opts = options || {};
-    pushError(opts.kind || 'fatal', message, detail);
-    if (fatalShown && !opts.force) return;
-    fatalShown = true;
-    whenBodyReady(function () {
-      var screen = $('screen-error');
-      if (!screen) return;
-      var sections = document.querySelectorAll('main > section');
-      for (var i = 0; i < sections.length; i += 1) {
-        if (sections[i] !== screen) sections[i].classList.add('hidden');
-      }
-      screen.classList.remove('hidden');
-      screen.classList.add('fatal');
-      document.body.classList.add('fatal-error');
-      if (opts.title) {
-        var title = $('error-title');
-        if (title) title.textContent = opts.title;
-      }
-      var text = $('error-text');
-      if (text) text.textContent = message || 'Что-то пошло не так.';
-      var retry = $('error-retry');
-      if (retry) retry.hidden = !window.__DUNE_APP_BUILD__;
-      var box = $('error-details');
-      if (box && detail) {
-        box.textContent = String(detail);
-        box.hidden = false;
-      }
-    });
-  }
-  window.__DUNE_SHOW_FATAL__ = showFatal;
-
-  function fallbackCopy(text) {
-    try {
-      var area = document.createElement('textarea');
-      area.value = text;
-      area.setAttribute('readonly', 'readonly');
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      document.body.removeChild(area);
-    } catch (e) { /* clipboard unavailable */ }
-  }
-
-  function collectReport() {
-    var diagnostics = null;
-    try { diagnostics = window.__DUNE_DIAGNOSTICS__ ? window.__DUNE_DIAGNOSTICS__() : null; }
-    catch (e) { diagnostics = { error: String(e) }; }
-    var registrations = [];
-    var cacheKeys = [];
-    var jobs = [
-      (window.caches && caches.keys)
-        ? caches.keys().then(function (keys) { cacheKeys = keys; }).catch(function () { /* none */ })
-        : Promise.resolve(),
-    ];
-    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
-      jobs.push(navigator.serviceWorker.getRegistrations().then(function (list) {
-        registrations = list.map(function (reg) {
-          return { scope: reg.scope, active: !!reg.active, waiting: !!reg.waiting, installing: !!reg.installing };
-        });
-      }).catch(function () { /* none */ }));
-    }
-    return Promise.all(jobs).then(function () {
-      var controller = ('serviceWorker' in navigator && navigator.serviceWorker.controller)
-        ? navigator.serviceWorker.controller.scriptURL
-        : null;
-      return {
-        generatedAt: new Date().toISOString(),
-        url: location.href,
-        build: { shell: BUILD, app: window.__DUNE_APP_BUILD__ || null, controller: controller },
-        userAgent: navigator.userAgent,
-        platform: navigator.platform || '',
-        language: navigator.language,
-        crossOriginIsolated: !!window.crossOriginIsolated,
-        serviceWorker: { supported: 'serviceWorker' in navigator, controller: controller, registrations: registrations },
-        caches: cacheKeys,
-        repairAttempts: readRepairs(),
-        errors: errors.slice(-60),
-        diagnostics: diagnostics,
-        buildResults: window.__BUILD_RESULTS__ || [],
-        buildErrors: window.__BUILD_ERRORS__ || [],
-      };
-    });
-  }
-  window.__duneCollectReport = collectReport;
-
-  function copyReport() {
-    var status = $('error-copy-status');
-    if (status) status.textContent = 'Собираем отчёт…';
-    return collectReport().then(function (report) {
-      var text = JSON.stringify(report, null, 2);
-      var done = function () { if (status) status.textContent = 'Отчёт скопирован в буфер обмена.'; };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        return navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
-      }
-      fallbackCopy(text);
-      done();
-      return undefined;
-    }).catch(function (error) {
-      if (status) status.textContent = 'Не удалось собрать отчёт: ' + error;
-    });
-  }
-  window.__duneCopyReport = copyReport;
-
-  /* ----------------------------------------------------------- listeners -- */
-
-  window.addEventListener('error', function (event) {
-    var target = event.target;
-    if (target && target !== window && target.tagName) {
-      if (target.tagName === 'SCRIPT') {
-        pushError('module-load', 'failed to load ' + (target.src || 'module'),
-          'src=' + (target.src || '') + '\nreadyState=' + document.readyState);
-        if (!window.__DUNE_APP_BUILD__) {
-          selfHeal('app module failed to load: ' + (target.src || ''));
-        }
-        return;
-      }
-      pushError('resource', (target.tagName || 'resource') + ' failed: ' + (target.src || target.href || ''));
-      return;
-    }
-    var message = event.message || (event.error && event.error.message) || 'Неизвестная ошибка';
-    var detail = event.error && event.error.stack
-      ? event.error.stack
-      : (event.filename ? event.filename + ':' + event.lineno + ':' + event.colno : '');
-    showFatal(message, detail, { kind: 'uncaught', title: 'Игра не запустилась' });
-  }, true);
-
-  window.addEventListener('unhandledrejection', function (event) {
-    var reason = event.reason;
-    var message = (reason && reason.message) || String(reason || 'Необработанный сбой');
-    var detail = reason && reason.stack ? reason.stack : '';
-    showFatal(message, detail, { kind: 'unhandledrejection', title: 'Игра не запустилась' });
-  });
-
-  whenBodyReady(function () {
-    var nosw = $('nosw-banner');
-    if (noSw && nosw) nosw.hidden = false;
-    // When app.mjs is running it owns these two buttons (it can add richer
-    // diagnostics); only fall back to the bootstrap wiring if it failed.
-    if (window.__DUNE_APP_BUILD__ === BUILD) return;
-    var reload = $('error-reload-clean');
-    if (reload) {
-      reload.addEventListener('click', function () {
-        reload.disabled = true;
-        var status = $('error-copy-status');
-        if (status) status.textContent = 'Снимаем Service Worker, удаляем кэш и перезагружаем…';
-        reloadClean();
-      });
-    }
-    var copy = $('error-copy');
-    if (copy) copy.addEventListener('click', function () { copyReport(); });
-  });
-
-  window.addEventListener('load', function () {
-    setTimeout(checkAppBuild, 900);
-  });
-  // Safety net: if the document finished but app.mjs never ran (e.g. a module
-  // request died), surface the error even when the load event was skipped.
-  setTimeout(function () {
-    if (document.readyState === 'complete') checkAppBuild();
-  }, 3200);
-
-  if (noSw) {
-    /* Emergency mode: drop the service worker and every cache, then reload once
-     * unprotected so the page is built from network bytes only. */
-    var marker = 0;
-    try { marker = Number(sessionStorage.getItem(NOSW_KEY) || 0); } catch (e) { marker = 0; }
-    var wasControlled = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
-    purgeShell().then(function () {
-      if (wasControlled && Date.now() - marker > 10000) {
-        try { sessionStorage.setItem(NOSW_KEY, String(Date.now())); } catch (e) { /* private mode */ }
-        location.reload();
-      }
-    });
-  } else {
-    // A controller left over from an older deploy answers with an older VERSION
-    // (or not at all): repair before the player can hit a stale shell.
-    setTimeout(checkControllerVersion, 250);
-  }
+    for(const link of links){link.addEventListener('load',check);link.addEventListener('error',check);}
+    check();if(!done)timer=setTimeout(()=>finish(Error('Interface stylesheet load timed out')),15000);
+   });
+   return styles;
+  },
+  progress({stage,loaded=0,total=0}={}){
+   if(complete||failed)return;
+   set(stage==='offline'?words.offline+(total?' '+loaded+' / '+total:''):stage==='graphics'&&total?words.graphics+' '+loaded+' / '+total:words.catalogue);
+   if(total){bar.setAttribute('aria-valuenow',String(loaded));bar.setAttribute('aria-valuemax',String(total));fill.style.width=(loaded/total*100)+'%';bar.classList.remove('boot-indeterminate');}
+  },
+  engine(){if(!complete&&!failed&&bar.classList.contains('boot-indeterminate'))set(words.engine);},
+  legacy(){
+   panel.dataset.bootState='legacy';document.getElementById('start').hidden=false;bar.hidden=true;complete=true;canvas.hidden=true;heading.hidden=true;
+   label.classList.remove('boot-accessible');text.classList.remove('boot-accessible');text.textContent='SEGA GENESIS · USA';
+  },
+  finish(){if(failed)return;complete=true;panel.dataset.readyMs=String(Math.round(window.performance?.now?.()||0));if(frame)cancelAnimationFrame(frame);frame=0;panel.hidden=true;},
+  fail(){if(complete)return;failed=true;panel.dataset.bootState='error';label.textContent=words.error;set(words.connection);bar.hidden=true;retry.hidden=false;},
+ };
+ window.addEventListener('error',event=>{if(!complete&&(event.target?.tagName==='SCRIPT'||event.target?.tagName==='LINK'&&event.target.getAttribute('data-ui-style')!==null||event.filename?.includes('shell.js')))api.fail();},true);
 })();
 </script>
-</head>
-<body>
-<div id="nosw-banner" hidden>Аварийный режим: Service Worker и кэш отключены — страница загружена с сервера. <a href="./">Вернуться в обычный режим</a></div>
-<main>
-  <header>
-    <div class="logo">Dune</div>
-    <div class="chip" id="stage-chip">BYOP · бета</div>
-    <button class="lang" id="lang-toggle" title="Switch language" aria-label="Switch language">EN</button>
-  </header>
-
-  <!-- 1. Choose ROM -->
-  <section class="card center" id="screen-setup">
-    <div class="cart" aria-hidden="true"></div>
-    <h1 class="title">Добавьте свою игру</h1>
-    <p class="hint">Нужен ROM Sega Genesis версии Dune (USA). Файл останется на этом устройстве.</p>
-    <label class="drop" id="drop" for="rom-input">
-      <span class="btn" role="button">Выбрать ROM</span>
-      <span class="hint" style="font-size:13px">или перетащите файл сюда</span>
-      <input id="rom-input" type="file" accept=".gen,.bin,.md,application/octet-stream" hidden>
-    </label>
-    <p class="hint" id="setup-note" style="font-size:13px"></p>
-    <button class="btn ghost small" id="help-open" style="width:100%">Как играть</button>
-  </section>
-
-  <!-- 2. Building -->
-  <section class="card center hidden" id="screen-progress">
-    <div class="ring" id="ring">
-      <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
-        <circle cx="66" cy="66" r="58" fill="none" stroke="#2a2014" stroke-width="10"></circle>
-        <circle id="ring-value" cx="66" cy="66" r="58" fill="none" stroke="#f0c870" stroke-width="10"
-                stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="364.4"></circle>
-      </svg>
-      <div class="pct" id="pct">0%</div>
-    </div>
-    <h1 class="title" id="progress-title">Готовим игру…</h1>
-    <p class="hint" id="progress-hint">Не закрывайте вкладку — сборка идёт на этом устройстве.</p>
-    <div class="steps" id="steps" aria-hidden="true"></div>
-  </section>
-
-  <!-- 3. Ready -->
-  <section class="card center hidden" id="screen-ready">
-    <div class="badge" id="ready-badge">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-    </div>
-    <h1 class="title" id="ready-title">Игра собрана</h1>
-    <p class="hint" id="ready-hint">Теперь её можно запускать. Кнопка «Играть» включится в следующем обновлении.</p>
-    <div class="row">
-      <button class="btn" id="play" disabled>
-        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-        Играть
-      </button>
-      <button class="btn ghost" id="rebuild" style="flex:0 0 54px; padding:0" title="Собрать заново" aria-label="Собрать заново">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
-      </button>
-    </div>
-    <button class="btn ghost hidden" id="new-game">Новая игра</button>
-    <button class="btn ghost small hidden" id="install-app" style="width:100%">Установить на телефон</button>
-    <button class="btn ghost small" id="open-saves" style="width:100%">Сохранения</button>
-  </section>
-
-  <!-- Error -->
-  <section class="card center hidden" id="screen-error">
-    <div class="badge bad">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 8v6"/><path d="M12 17.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
-    </div>
-    <h1 class="title" id="error-title">Не получилось</h1>
-    <p class="hint" id="error-text">Что-то пошло не так.</p>
-    <pre id="error-details" hidden></pre>
-    <div id="error-actions">
-      <button class="btn" id="error-retry">Попробовать другой ROM</button>
-      <button class="btn ghost" id="error-reload-clean">Перезагрузить без кэша</button>
-      <button class="btn ghost" id="error-copy">Скопировать отчёт</button>
-      <a class="btn ghost small" id="error-nosw" href="?nosw=1">Открыть в аварийном режиме (без Service Worker)</a>
-      <p id="error-copy-status" class="hint"></p>
-    </div>
-  </section>
-
-  <!-- 4. Playing -->
-  <section id="screen-game" class="game hidden" aria-label="Игра">
-    <div class="game-stage">
-      <canvas id="game-canvas" width="320" height="224"></canvas>
-    <div class="building-cells" id="building-cells" hidden></div>
-      <div class="game-loading" id="game-loading"><div class="spinner"></div><span id="game-loading-text">Запускаем игру…</span></div>
-    </div>
-    <div class="game-top">
-      <button class="game-btn ghost" id="game-back" aria-label="Выйти" title="Выйти">✕</button>
-    </div>
-    <div class="game-top-right">
-      <button class="game-btn ghost" id="game-menu" aria-label="Меню" title="Меню">☰</button>
-    </div>
-    <div class="hud" id="game-hud" hidden>
-      <button class="hud-btn" id="hud-b" hidden></button>
-      <button class="hud-btn ghost" id="hud-place" hidden>PLACE</button>
-      <button class="hud-btn ghost" id="hud-clear" hidden>CLEAR</button>
-    </div>
-    <div class="game-controls" id="game-controls">
-      <div class="dpad">
-        <button class="game-btn" data-pad="1" aria-label="Вверх">▲</button>
-        <button class="game-btn" data-pad="4" aria-label="Влево">◀</button>
-        <button class="game-btn" data-pad="2" aria-label="Вниз">▼</button>
-        <button class="game-btn" data-pad="8" aria-label="Вправо">▶</button>
-      </div>
-      <div class="action-pad">
-        <button class="game-btn round" data-pad="64" aria-label="A">A</button>
-        <button class="game-btn round" data-pad="16" aria-label="B">B</button>
-        <button class="game-btn wide" data-pad="128" aria-label="Start">START</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- In-game menu sheet -->
-  <div class="sheet hidden" id="game-sheet" role="dialog" aria-modal="true" aria-labelledby="game-sheet-title">
-    <div class="inner">
-      <h2 id="game-sheet-title">Пауза</h2>
-      <p class="status" id="game-sheet-status">—</p>
-      <button class="btn" id="game-save">Сохранить</button>
-      <button class="btn ghost" id="game-load">Загрузить</button>
-      <button class="btn ghost" id="game-sound">Звук: выкл</button>
-      <button class="btn ghost" id="game-fullscreen">На весь экран</button>
-      <button class="btn ghost" id="game-exit">Выйти из игры</button>
-      <button class="btn ghost" id="game-help">Справка</button>
-      <button class="btn ghost small" id="game-sheet-close">Продолжить</button>
-    </div>
-  </div>
-
-  <!-- Technical details, collapsed -->
-  <details id="details">
-    <summary>Подробности</summary>
-    <div class="box">
-      <div><b>Версия:</b> <span id="detail-version">—</span></div>
-      <div><b>ROM:</b> <span id="detail-rom">—</span></div>
-      <div><b>Ядро:</b> <span id="detail-core">—</span></div>
-      <div><b>Время:</b> <span id="detail-time">—</span></div>
-      <pre id="detail-log">—</pre>
-      <button class="btn ghost small" id="download-log" style="margin-top:10px">Скачать отчёт</button>
-    </div>
-  </details>
-
-  <footer>Игра не поставляется: ROM приносит игрок. <a href="https://github.com/superoles-red/dune-web" target="_blank" rel="noopener">Исходники</a></footer>
-</main>
-
-<!-- Help sheet -->
-<div class="sheet hidden" id="help-sheet" role="dialog" aria-modal="true" aria-labelledby="help-title">
-  <div class="inner help">
-    <h2 id="help-title">Как играть</h2>
-    <h3>Что нужно</h3>
-    <p>Свой ROM Dune — The Battle for Arrakis (Sega Genesis, USA). Это дамп 1 МиБ; никуда не загружается и не входит в сборку — игра собирается на вашем устройстве.</p>
-    <h3>Управление</h3>
-    <p>Меню и вступление: кнопки A / START и стрелки (или D-pad на экране).</p>
-    <p>Карта: тап — выбрать, двойной тап — приказ, перетаскивание — прокрутка карты, щипок — масштаб.</p>
-    <p>Свой завод: коснитесь ещё раз (двойной тап) — откроется оригинальное меню здания.</p>
-    <p>Кнопка ☰ — пауза, сохранение, звук, полный экран. Игра сама сохраняется каждые 20 секунд.</p>
-    <button class="btn" id="help-close">Понятно</button>
-  </div>
-</div>
-
-<!-- Saves sheet -->
-<div class="sheet hidden" id="saves-sheet" role="dialog" aria-modal="true" aria-labelledby="saves-title">
-  <div class="inner">
-    <h2 id="saves-title">Сохранения</h2>
-    <p class="status" id="saves-status">—</p>
-    <div class="row">
-      <button class="btn small" id="save-load">Загрузить файл</button>
-      <button class="btn ghost small" id="save-download">Скачать файл</button>
-    </div>
-    <input id="save-file" type="file" accept=".json,application/json" hidden>
-    <button class="btn ghost" id="saves-close">Закрыть</button>
-  </div>
-</div>
-
-<script type="module" src="./app.mjs"></script>
-</body>
-</html>
+<!-- END GENERATED STARTUP -->
+<!-- BYOP boot: ROM picker -> in-browser recompile -> runtime.wasm -> legacy shell.js -->
+<script id="byop-sw">
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+  });
+}
+</script>
+<script type="module" src="byop-boot.mjs?v=20261128-legacy-byop"></script></body></html>

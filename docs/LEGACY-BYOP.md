@@ -1,7 +1,7 @@
 # Legacy BYOP: старый фронтенд Dune Sega Web на BYOP-ядре
 
 Статус: **рабочий вертикальный срез** (первый этап). Старый фронтенд
-(`web/legacy/`) грузится в новом репозитории, собирает `game.wasm` из ROM игрока
+(`web/`) грузится в новом репозитории, собирает `game.wasm` из ROM игрока
 в браузере и проходит путь **выбор ROM → сборка → главное меню → New Campaign →
 дом → миссия → брифинг → карта → пауза → сохранение/загрузка → возврат в меню**.
 
@@ -11,7 +11,7 @@
 
 ---
 
-## 1. Что лежит в `web/legacy/`
+## 1. Что лежит в `web/`
 
 Копия старого `Dune Sega Web/web/` **без** `engine/`, `asset-library/`,
 `base-prototype/{app.mjs,index.html,assets}`, `qa*`, `update*`, `entry.js`,
@@ -31,16 +31,16 @@
 
 Новых файлов:
 
-- `web/legacy/byop-boot.mjs` — стартовый экран ROM + сборка + загрузка ядра +
+- `web/byop-boot.mjs` — стартовый экран ROM + сборка + загрузка ядра +
   fast-forward до главного меню + `Module`-фасад + запуск старого `shell.js`;
-- `web/legacy/index.html` — копия старого, изменена только одна строка
+- `web/index.html` — копия старого, изменена только одна строка
   (`entry.js` → `byop-boot.mjs`) и добавлен favicon;
-- `web/legacy/shell.js` — копия старого, изменены `startEngine()` и добавлен
+- `web/shell.js` — копия старого, изменены `startEngine()` и добавлен
   вызов `window.duneByop.attach(Module)`; остальная логика не тронута.
 
 ROM/engine/`.state.bin` в репозитории нет. `game.wasm` и состояние главного
 меню генерируются на устройстве и лежат в OPFS
-(`dune-web/rom-<sha>/game.wasm`, `dune-web/legacy/frontend-*.bin`).
+(`dune-web/rom-<sha>/game.wasm`, `dune-web/frontend-*.bin`).
 
 ---
 
@@ -241,6 +241,6 @@ OLD_URL=http://127.0.0.1:4560/?qa node tests/browser/legacy-oldref.mjs
 2. Порт/URL для тестов (по умолчанию 4550) и место хранения скриншотов
    (`test-results/legacy/` уже).
 3. Разрешение на общий кэш `dune-web` в OPFS (уже используется: legacy читает
-   `game.wasm` из `dune-web/rom-<sha>/` и пишет `dune-web/legacy/frontend-*.bin`)
+   `game.wasm` из `dune-web/rom-<sha>/` и пишет `dune-web/frontend-*.bin`)
    — конфликтов с `web/app.mjs` нет.
 4. Решение по демо/кредитам и PWA (переносить или выпилить из legacy UI).

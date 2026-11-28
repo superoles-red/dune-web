@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#120d08">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DUNE">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" href="./icons/icon-192.png">
+<title>Dune</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #120d08; --panel: #1b140c; --panel-2: #241a0f; --line: #3a2c1a;
+    --text: #e8d8b8; --muted: #9a8565; --accent: #f0c870; --ok: #8fd08f; --bad: #e08070;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: radial-gradient(120% 80% at 50% 0%, #1d1509 0%, var(--bg) 70%);
+    color: var(--text); font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 18px; flex: 1; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 2px; }
+  .logo { font: 800 26px/1 ui-serif, Georgia, serif; letter-spacing: .22em; color: var(--accent); text-transform: uppercase; }
+  .chip { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+          border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
+
+  .card { background: linear-gradient(180deg, var(--panel) 0%, #17100a 100%);
+          border: 1px solid var(--line); border-radius: 20px; padding: 22px 20px; }
+  .card.center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+
+  .hidden { display: none !important; }
+
+  /* --- choose ROM --- */
+  .cart { width: 86px; height: 104px; position: relative; border: 3px solid #5b4426; border-radius: 10px 10px 6px 6px;
+          background: linear-gradient(180deg, #2b1f10, #1d150b); }
+  .cart::before { content: ""; position: absolute; inset: 8px 8px 34px; border-radius: 4px;
+                  background: repeating-linear-gradient(90deg, #3c2d18 0 6px, #2a1f11 6px 12px); }
+  .cart::after { content: "ROM"; position: absolute; left: 0; right: 0; bottom: 8px; text-align: center;
+                 font: 700 11px/1 ui-monospace, monospace; letter-spacing: .18em; color: var(--muted); }
+  .cart.small { transform: scale(.6); margin: -18px; }
+
+  .title { font-size: 21px; font-weight: 700; margin: 0; }
+  .hint { color: var(--muted); font-size: 14px; margin: 0; max-width: 34ch; }
+
+  .btn { -webkit-appearance: none; appearance: none; border: 0; border-radius: 14px; cursor: pointer;
+         font: inherit; font-weight: 700; color: #1a130c; background: var(--accent);
+         min-height: 54px; padding: 0 22px; width: 100%; display: inline-flex; align-items: center;
+         justify-content: center; gap: 10px; transition: transform .08s ease, filter .15s ease; }
+  .btn:active { transform: scale(.985); }
+  .btn[disabled] { opacity: .4; pointer-events: none; }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  .btn.small { min-height: 44px; width: auto; padding: 0 16px; font-size: 14px; }
+  .btn .icon { width: 20px; height: 20px; flex: 0 0 auto; }
+
+  .drop { border: 2px dashed #4a3820; border-radius: 16px; padding: 26px 16px; width: 100%;
+          display: flex; flex-direction: column; align-items: center; gap: 14px; cursor: pointer;
+          transition: border-color .15s ease, background .15s ease; }
+  .drop.over { border-color: var(--accent); background: #221809; }
+
+  /* --- progress --- */
+  .ring { width: 132px; height: 132px; position: relative; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring .pct { position: absolute; inset: 0; display: grid; place-items: center; font: 700 26px/1 ui-monospace, monospace; color: var(--accent); }
+  .steps { display: flex; gap: 6px; justify-content: center; width: 100%; margin-top: 4px; }
+  .steps i { width: 8px; height: 8px; border-radius: 50%; background: #3a2c1a; }
+  .steps i.on { background: var(--accent); }
+
+  /* --- result --- */
+  .badge { width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center;
+           background: #1d2a17; border: 2px solid #3f6a35; color: var(--ok); }
+  .badge.bad { background: #2a1714; border-color: #6a3530; color: var(--bad); }
+  .badge svg { width: 38px; height: 38px; }
+
+  .row { display: flex; gap: 10px; width: 100%; }
+  .row > * { flex: 1; }
+
+  /* --- saves sheet --- */
+  .sheet { position: fixed; inset: 0; background: rgba(8, 5, 2, .72); display: flex; align-items: flex-end;
+           justify-content: center; z-index: 20; padding: 0; }
+  .sheet .inner { width: 100%; max-width: 520px; background: var(--panel-2); border: 1px solid var(--line);
+                  border-radius: 22px 22px 0 0; padding: 20px; display: flex; flex-direction: column; gap: 12px;
+                  padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  .sheet h2 { margin: 0; font-size: 17px; }
+  .sheet .status { color: var(--muted); font-size: 13px; margin: 0; min-height: 18px; }
+
+  /* --- details --- */
+  details { width: 100%; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 6px 2px; list-style: none; }
+  details summary::-webkit-details-marker { display: none; }
+  details .box { background: #140e08; border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+                 font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+  details .box b { color: var(--text); font-weight: 600; }
+  details pre { margin: 8px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font-size: 11px; }
+
+  /* --- game --- */
+  .game { position: fixed; inset: 0; background: #000; z-index: 10; display: flex; align-items: center;
+          justify-content: center; overflow: hidden; }
+  .game-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  #game-canvas { display: block; width: 100%; height: 100%; object-fit: contain;
+                 image-rendering: pixelated; background: #000; touch-action: none; }
+  .game-loading { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
+                  align-items: center; justify-content: center; color: var(--muted); font-size: 14px;
+                  background: #000; }
+  .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #3a2c1a;
+             border-top-color: var(--accent); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .game-top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; z-index: 3; }
+  .building-mode .game-controls, .building-mode .hud, .building-mode .game-top { display: none; }
+  .building-cells { position: absolute; z-index: 5; }
+  .building-cells button { position: absolute; padding: 0; margin: 0; border: 0; background: transparent;
+                           border-radius: 3px; pointer-events: auto; }
+  .building-cells button:focus-visible { outline: 2px solid #ffd873; }
+  .building-cells button:active { background: rgba(255,216,115,.28); }
+  .hud { position: absolute; right: 14px; bottom: 154px; display: flex; flex-direction: column;
+         gap: 10px; align-items: flex-end; z-index: 4; }
+  .hud-btn { min-width: 92px; height: 46px; padding: 0 16px; border-radius: 23px; border: 1px solid #caa54a;
+             background: #2a2210; color: #ffd873; font: 600 14px/1 system-ui, sans-serif; letter-spacing: .06em;
+             box-shadow: 0 2px 0 rgba(0,0,0,.55); }
+  .hud-btn.ghost { background: rgba(20,16,8,.85); color: #e7cf96; }
+  .hud-btn:active { transform: translateY(1px); }
+  .hud-btn[hidden] { display: none; }
+  @media (orientation: landscape) { .hud { bottom: 122px; right: 24px; } }
+  .game-controls { position: absolute; inset: auto 0 max(12px, env(safe-area-inset-bottom)) 0;
+                   display: flex; justify-content: space-between; align-items: flex-end;
+                   padding: 0 16px; z-index: 3; pointer-events: none; }
+  .game-controls > * { pointer-events: auto; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px);
+          gap: 6px; opacity: .82; }
+  .dpad button[data-pad="1"] { grid-column: 2; grid-row: 1; }
+  .dpad button[data-pad="4"] { grid-column: 1; grid-row: 2; }
+  .dpad button[data-pad="2"] { grid-column: 2; grid-row: 2; }
+  .dpad button[data-pad="8"] { grid-column: 3; grid-row: 2; }
+  .action-pad { display: flex; gap: 10px; align-items: flex-end; opacity: .82;
+                position: relative; padding-right: 130px; }
+  .game-btn { width: 48px; height: 48px; border-radius: 12px; border: 1px solid #4a3820;
+              background: rgba(30, 22, 12, .78); color: #e8d8b8; font: 700 14px/1 inherit;
+              display: grid; place-items: center; backdrop-filter: blur(4px); }
+  .game-btn:active { background: rgba(240, 200, 112, .35); }
+  .game-btn.round { border-radius: 50%; }
+  .game-btn.wide { width: auto; padding: 0 16px; height: 42px; border-radius: 21px; font-size: 12px;
+                   letter-spacing: .08em; }
+  .game-btn.ghost { background: rgba(10, 8, 5, .5); width: 40px; height: 40px; border-radius: 50%;
+                    font-size: 15px; }
+  .game-top-right { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 3; }
+  /* The canvas keeps its pixel aspect and is fitted to the viewport, like the
+     old port: portrait shows a tall 320x~690 world view, landscape 485x224. */
+  @media (orientation: portrait) { .game-controls { padding: 0 10px; } }
+  @media (orientation: landscape) { .game-controls { padding: 0 24px; } }
+
+  .lang { margin-left: auto; border: 1px solid #4a3820; background: rgba(30,22,12,.8); color: #e8d8b8;
+          border-radius: 10px; padding: 4px 10px; font: 700 12px/1 inherit; letter-spacing: .08em; }
+  .lang:active { background: rgba(240,200,112,.3); }
+
+  /* --- fatal error screen (must cover a black canvas, never leave it blank) --- */
+  #screen-error.fatal {
+    position: fixed; inset: 0; z-index: 50; width: 100%; max-width: none; border-radius: 0;
+    overflow-y: auto; justify-content: center; gap: 12px;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+    background: radial-gradient(120% 80% at 50% 0%, #1d1509 0%, var(--bg) 70%);
+  }
+  #error-details { width: 100%; max-height: 170px; overflow: auto; text-align: left; margin: 0;
+                   white-space: pre-wrap; overflow-wrap: anywhere; background: #140e08;
+                   border: 1px solid var(--line); border-radius: 12px; padding: 10px;
+                   font: 11px/1.4 ui-monospace, monospace; color: var(--muted); }
+  #error-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  #error-copy-status { color: var(--ok); font-size: 12px; min-height: 16px; margin: 0; }
+  body.fatal-error main > section:not(#screen-error) { display: none !important; }
+  body.fatal-error .sheet { display: none !important; }
+  #nosw-banner { position: fixed; left: 0; right: 0; top: 0; z-index: 60; background: #6a3530; color: #fff;
+                 padding: max(8px, env(safe-area-inset-top)) 14px 8px; font-size: 12px; text-align: center; }
+  #nosw-banner a { color: #ffd873; }
+  .help h3 { margin: 14px 0 4px; font-size: 13px; color: #caa54a; letter-spacing: .06em; text-transform: uppercase; }
+  .help p { margin: 0 0 8px; font-size: 14px; line-height: 1.45; color: #e6d7bb; }
+  footer { color: #6d5c43; font-size: 11px; text-align: center; padding: 6px 0 0; }
+  footer a { color: #8a765a; }
+
+  @media (max-width: 420px) { .title { font-size: 19px; } .card { padding: 20px 16px; } }
+</style>
+<script>
+/* DUNE BYOP shell bootstrap.
+ *
+ * Runs before app.mjs and stays useful even when app.mjs fails to load, so a
+ * broken/stale shell shows a readable error screen instead of a black canvas.
+ *
+ * Keep BUILD in sync with VERSION in ./sw.js and APP_BUILD in ./app.mjs.
+ */
+(function () {
+  'use strict';
+
+  var BUILD = 'dune-byop-v3';
+  var REPAIR_KEY = 'dune-shell-repair';
+  var NOSW_KEY = 'dune-nosw-reload';
+  var errors = (window.__DUNE_ERRORS__ = window.__DUNE_ERRORS__ || []);
+  var params = new URLSearchParams(location.search);
+  var noSw = params.get('nosw') === '1';
+  var repairing = false;
+  var fatalShown = false;
+
+  window.__DUNE_SHELL_BUILD__ = BUILD;
+  window.__DUNE_NO_SW__ = noSw;
+
+  function $(id) { return document.getElementById(id); }
+
+  function whenBodyReady(fn) {
+    if (document.body) { fn(); return; }
+    document.addEventListener('DOMContentLoaded', fn, { once: true });
+  }
+
+  function pushError(kind, message, detail) {
+    var entry = {
+      at: new Date().toISOString(),
+      kind: kind,
+      message: String(message == null ? '' : message).slice(0, 2000),
+      detail: detail ? String(detail).slice(0, 4000) : '',
+    };
+    errors.push(entry);
+    if (errors.length > 60) errors.shift();
+    try { console.error('[dune] ' + kind + ': ' + entry.message); } catch (e) { /* logging only */ }
+    return entry;
+  }
+  window.__DUNE_RECORD_ERROR__ = pushError;
+
+  /* ---------------------------------------------------- cache self-repair -- */
+
+  function purgeShell() {
+    var tasks = [];
+    try {
+      if ('serviceWorker' in navigator) {
+        tasks.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (reg) { return reg.unregister(); }));
+        }).catch(function () { /* no registrations */ }));
+      }
+    } catch (e) { /* service workers unavailable */ }
+    try {
+      if (window.caches && caches.keys) {
+        tasks.push(caches.keys().then(function (keys) {
+          return Promise.all(keys.map(function (key) { return caches.delete(key); }));
+        }).catch(function () { /* no caches */ }));
+      }
+    } catch (e) { /* caches unavailable */ }
+    return Promise.all(tasks);
+  }
+  window.__dunePurgeShell = purgeShell;
+
+  function reloadClean() {
+    return purgeShell().then(function () { location.reload(); }, function () { location.reload(); });
+  }
+  window.__duneReloadClean = reloadClean;
+
+  function readRepairs() {
+    try { return JSON.parse(sessionStorage.getItem(REPAIR_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function writeRepairs(value) {
+    try { sessionStorage.setItem(REPAIR_KEY, JSON.stringify(value)); } catch (e) { /* private mode */ }
+  }
+  function canAutoRepair() {
+    var state = readRepairs();
+    return !state.at || (Date.now() - state.at > 120000);
+  }
+  function noteRepair(reason) {
+    var state = readRepairs();
+    state.count = (state.count || 0) + 1;
+    state.at = Date.now();
+    state.reason = String(reason || '').slice(0, 300);
+    writeRepairs(state);
+  }
+
+  /* A stale service worker (from an older deploy) can serve old modules while
+   * index.html comes fresh from the network.  The controller must answer with
+   * the same BUILD as this page; otherwise drop the SW + caches and reload. */
+  function selfHeal(reason) {
+    if (noSw || repairing) return false;
+    pushError('self-heal', reason || 'stale shell cache');
+    if (!canAutoRepair()) {
+      showFatal(
+        'Оболочка сайта устарела и не обновилась автоматически.',
+        'Причина: ' + reason + '\nНажмите «Перезагрузить без кэша»: Service Worker будет снят, а кэш удалён.',
+        { kind: 'self-heal-failed', force: true, title: 'Нужна перезагрузка без кэша' },
+      );
+      return false;
+    }
+    repairing = true;
+    noteRepair(reason);
+    purgeShell().then(function () { location.reload(); }, function () { location.reload(); });
+    return true;
+  }
+  window.__duneSelfHeal = selfHeal;
+
+  function pingController() {
+    return new Promise(function (resolve) {
+      var sw = navigator.serviceWorker;
+      if (!sw || !sw.controller) { resolve(null); return; }
+      var channel = new MessageChannel();
+      var timer = setTimeout(function () { resolve(null); }, 1500);
+      channel.port1.onmessage = function (event) { clearTimeout(timer); resolve(event.data || null); };
+      try { sw.controller.postMessage({ type: 'DUNE_PING' }, [channel.port2]); }
+      catch (e) { clearTimeout(timer); resolve(null); }
+    });
+  }
+
+  function checkControllerVersion() {
+    if (noSw || !('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+    pingController().then(function (reply) {
+      if (!reply || reply.version !== BUILD) {
+        selfHeal('Service Worker "' + (reply && reply.version ? reply.version : 'unknown') + '" != shell "' + BUILD + '"');
+      }
+    });
+  }
+
+  function checkAppBuild() {
+    if (noSw) return;
+    if (window.__DUNE_APP_BUILD__ !== BUILD) {
+      selfHeal('app "' + String(window.__DUNE_APP_BUILD__) + '" != shell "' + BUILD + '"');
+    }
+  }
+
+  /* ------------------------------------------------ visible error screen -- */
+
+  function showFatal(message, detail, options) {
+    var opts = options || {};
+    pushError(opts.kind || 'fatal', message, detail);
+    if (fatalShown && !opts.force) return;
+    fatalShown = true;
+    whenBodyReady(function () {
+      var screen = $('screen-error');
+      if (!screen) return;
+      var sections = document.querySelectorAll('main > section');
+      for (var i = 0; i < sections.length; i += 1) {
+        if (sections[i] !== screen) sections[i].classList.add('hidden');
+      }
+      screen.classList.remove('hidden');
+      screen.classList.add('fatal');
+      document.body.classList.add('fatal-error');
+      if (opts.title) {
+        var title = $('error-title');
+        if (title) title.textContent = opts.title;
+      }
+      var text = $('error-text');
+      if (text) text.textContent = message || 'Что-то пошло не так.';
+      var retry = $('error-retry');
+      if (retry) retry.hidden = !window.__DUNE_APP_BUILD__;
+      var box = $('error-details');
+      if (box && detail) {
+        box.textContent = String(detail);
+        box.hidden = false;
+      }
+    });
+  }
+  window.__DUNE_SHOW_FATAL__ = showFatal;
+
+  function fallbackCopy(text) {
+    try {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', 'readonly');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    } catch (e) { /* clipboard unavailable */ }
+  }
+
+  function collectReport() {
+    var diagnostics = null;
+    try { diagnostics = window.__DUNE_DIAGNOSTICS__ ? window.__DUNE_DIAGNOSTICS__() : null; }
+    catch (e) { diagnostics = { error: String(e) }; }
+    var registrations = [];
+    var cacheKeys = [];
+    var jobs = [
+      (window.caches && caches.keys)
+        ? caches.keys().then(function (keys) { cacheKeys = keys; }).catch(function () { /* none */ })
+        : Promise.resolve(),
+    ];
+    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function (list) {
+        registrations = list.map(function (reg) {
+          return { scope: reg.scope, active: !!reg.active, waiting: !!reg.waiting, installing: !!reg.installing };
+        });
+      }).catch(function () { /* none */ }));
+    }
+    return Promise.all(jobs).then(function () {
+      var controller = ('serviceWorker' in navigator && navigator.serviceWorker.controller)
+        ? navigator.serviceWorker.controller.scriptURL
+        : null;
+      return {
+        generatedAt: new Date().toISOString(),
+        url: location.href,
+        build: { shell: BUILD, app: window.__DUNE_APP_BUILD__ || null, controller: controller },
+        userAgent: navigator.userAgent,
+        platform: navigator.platform || '',
+        language: navigator.language,
+        crossOriginIsolated: !!window.crossOriginIsolated,
+        serviceWorker: { supported: 'serviceWorker' in navigator, controller: controller, registrations: registrations },
+        caches: cacheKeys,
+        repairAttempts: readRepairs(),
+        errors: errors.slice(-60),
+        diagnostics: diagnostics,
+        buildResults: window.__BUILD_RESULTS__ || [],
+        buildErrors: window.__BUILD_ERRORS__ || [],
+      };
+    });
+  }
+  window.__duneCollectReport = collectReport;
+
+  function copyReport() {
+    var status = $('error-copy-status');
+    if (status) status.textContent = 'Собираем отчёт…';
+    return collectReport().then(function (report) {
+      var text = JSON.stringify(report, null, 2);
+      var done = function () { if (status) status.textContent = 'Отчёт скопирован в буфер обмена.'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+      }
+      fallbackCopy(text);
+      done();
+      return undefined;
+    }).catch(function (error) {
+      if (status) status.textContent = 'Не удалось собрать отчёт: ' + error;
+    });
+  }
+  window.__duneCopyReport = copyReport;
+
+  /* ----------------------------------------------------------- listeners -- */
+
+  window.addEventListener('error', function (event) {
+    var target = event.target;
+    if (target && target !== window && target.tagName) {
+      if (target.tagName === 'SCRIPT') {
+        pushError('module-load', 'failed to load ' + (target.src || 'module'),
+          'src=' + (target.src || '') + '\nreadyState=' + document.readyState);
+        if (!window.__DUNE_APP_BUILD__) {
+          selfHeal('app module failed to load: ' + (target.src || ''));
+        }
+        return;
+      }
+      pushError('resource', (target.tagName || 'resource') + ' failed: ' + (target.src || target.href || ''));
+      return;
+    }
+    var message = event.message || (event.error && event.error.message) || 'Неизвестная ошибка';
+    var detail = event.error && event.error.stack
+      ? event.error.stack
+      : (event.filename ? event.filename + ':' + event.lineno + ':' + event.colno : '');
+    showFatal(message, detail, { kind: 'uncaught', title: 'Игра не запустилась' });
+  }, true);
+
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event.reason;
+    var message = (reason && reason.message) || String(reason || 'Необработанный сбой');
+    var detail = reason && reason.stack ? reason.stack : '';
+    showFatal(message, detail, { kind: 'unhandledrejection', title: 'Игра не запустилась' });
+  });
+
+  whenBodyReady(function () {
+    var nosw = $('nosw-banner');
+    if (noSw && nosw) nosw.hidden = false;
+    // When app.mjs is running it owns these two buttons (it can add richer
+    // diagnostics); only fall back to the bootstrap wiring if it failed.
+    if (window.__DUNE_APP_BUILD__ === BUILD) return;
+    var reload = $('error-reload-clean');
+    if (reload) {
+      reload.addEventListener('click', function () {
+        reload.disabled = true;
+        var status = $('error-copy-status');
+        if (status) status.textContent = 'Снимаем Service Worker, удаляем кэш и перезагружаем…';
+        reloadClean();
+      });
+    }
+    var copy = $('error-copy');
+    if (copy) copy.addEventListener('click', function () { copyReport(); });
+  });
+
+  window.addEventListener('load', function () {
+    setTimeout(checkAppBuild, 900);
+  });
+  // Safety net: if the document finished but app.mjs never ran (e.g. a module
+  // request died), surface the error even when the load event was skipped.
+  setTimeout(function () {
+    if (document.readyState === 'complete') checkAppBuild();
+  }, 3200);
+
+  if (noSw) {
+    /* Emergency mode: drop the service worker and every cache, then reload once
+     * unprotected so the page is built from network bytes only. */
+    var marker = 0;
+    try { marker = Number(sessionStorage.getItem(NOSW_KEY) || 0); } catch (e) { marker = 0; }
+    var wasControlled = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+    purgeShell().then(function () {
+      if (wasControlled && Date.now() - marker > 10000) {
+        try { sessionStorage.setItem(NOSW_KEY, String(Date.now())); } catch (e) { /* private mode */ }
+        location.reload();
+      }
+    });
+  } else {
+    // A controller left over from an older deploy answers with an older VERSION
+    // (or not at all): repair before the player can hit a stale shell.
+    setTimeout(checkControllerVersion, 250);
+  }
+})();
+</script>
+</head>
+<body>
+<div id="nosw-banner" hidden>Аварийный режим: Service Worker и кэш отключены — страница загружена с сервера. <a href="./">Вернуться в обычный режим</a></div>
+<main>
+  <header>
+    <div class="logo">Dune</div>
+    <div class="chip" id="stage-chip">BYOP · бета</div>
+    <button class="lang" id="lang-toggle" title="Switch language" aria-label="Switch language">EN</button>
+  </header>
+
+  <!-- 1. Choose ROM -->
+  <section class="card center" id="screen-setup">
+    <div class="cart" aria-hidden="true"></div>
+    <h1 class="title">Добавьте свою игру</h1>
+    <p class="hint">Нужен ROM Sega Genesis версии Dune (USA). Файл останется на этом устройстве.</p>
+    <label class="drop" id="drop" for="rom-input">
+      <span class="btn" role="button">Выбрать ROM</span>
+      <span class="hint" style="font-size:13px">или перетащите файл сюда</span>
+      <input id="rom-input" type="file" accept=".gen,.bin,.md,application/octet-stream" hidden>
+    </label>
+    <p class="hint" id="setup-note" style="font-size:13px"></p>
+    <button class="btn ghost small" id="help-open" style="width:100%">Как играть</button>
+  </section>
+
+  <!-- 2. Building -->
+  <section class="card center hidden" id="screen-progress">
+    <div class="ring" id="ring">
+      <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
+        <circle cx="66" cy="66" r="58" fill="none" stroke="#2a2014" stroke-width="10"></circle>
+        <circle id="ring-value" cx="66" cy="66" r="58" fill="none" stroke="#f0c870" stroke-width="10"
+                stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="364.4"></circle>
+      </svg>
+      <div class="pct" id="pct">0%</div>
+    </div>
+    <h1 class="title" id="progress-title">Готовим игру…</h1>
+    <p class="hint" id="progress-hint">Не закрывайте вкладку — сборка идёт на этом устройстве.</p>
+    <div class="steps" id="steps" aria-hidden="true"></div>
+  </section>
+
+  <!-- 3. Ready -->
+  <section class="card center hidden" id="screen-ready">
+    <div class="badge" id="ready-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+    </div>
+    <h1 class="title" id="ready-title">Игра собрана</h1>
+    <p class="hint" id="ready-hint">Теперь её можно запускать. Кнопка «Играть» включится в следующем обновлении.</p>
+    <div class="row">
+      <button class="btn" id="play" disabled>
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        Играть
+      </button>
+      <button class="btn ghost" id="rebuild" style="flex:0 0 54px; padding:0" title="Собрать заново" aria-label="Собрать заново">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      </button>
+    </div>
+    <button class="btn ghost hidden" id="new-game">Новая игра</button>
+    <button class="btn ghost small hidden" id="install-app" style="width:100%">Установить на телефон</button>
+    <button class="btn ghost small" id="open-saves" style="width:100%">Сохранения</button>
+  </section>
+
+  <!-- Error -->
+  <section class="card center hidden" id="screen-error">
+    <div class="badge bad">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 8v6"/><path d="M12 17.5v.5"/><circle cx="12" cy="12" r="9"/></svg>
+    </div>
+    <h1 class="title" id="error-title">Не получилось</h1>
+    <p class="hint" id="error-text">Что-то пошло не так.</p>
+    <pre id="error-details" hidden></pre>
+    <div id="error-actions">
+      <button class="btn" id="error-retry">Попробовать другой ROM</button>
+      <button class="btn ghost" id="error-reload-clean">Перезагрузить без кэша</button>
+      <button class="btn ghost" id="error-copy">Скопировать отчёт</button>
+      <a class="btn ghost small" id="error-nosw" href="?nosw=1">Открыть в аварийном режиме (без Service Worker)</a>
+      <p id="error-copy-status" class="hint"></p>
+    </div>
+  </section>
+
+  <!-- 4. Playing -->
+  <section id="screen-game" class="game hidden" aria-label="Игра">
+    <div class="game-stage">
+      <canvas id="game-canvas" width="320" height="224"></canvas>
+    <div class="building-cells" id="building-cells" hidden></div>
+      <div class="game-loading" id="game-loading"><div class="spinner"></div><span id="game-loading-text">Запускаем игру…</span></div>
+    </div>
+    <div class="game-top">
+      <button class="game-btn ghost" id="game-back" aria-label="Выйти" title="Выйти">✕</button>
+    </div>
+    <div class="game-top-right">
+      <button class="game-btn ghost" id="game-menu" aria-label="Меню" title="Меню">☰</button>
+    </div>
+    <div class="hud" id="game-hud" hidden>
+      <button class="hud-btn" id="hud-b" hidden></button>
+      <button class="hud-btn ghost" id="hud-place" hidden>PLACE</button>
+      <button class="hud-btn ghost" id="hud-clear" hidden>CLEAR</button>
+    </div>
+    <div class="game-controls" id="game-controls">
+      <div class="dpad">
+        <button class="game-btn" data-pad="1" aria-label="Вверх">▲</button>
+        <button class="game-btn" data-pad="4" aria-label="Влево">◀</button>
+        <button class="game-btn" data-pad="2" aria-label="Вниз">▼</button>
+        <button class="game-btn" data-pad="8" aria-label="Вправо">▶</button>
+      </div>
+      <div class="action-pad">
+        <button class="game-btn round" data-pad="64" aria-label="A">A</button>
+        <button class="game-btn round" data-pad="16" aria-label="B">B</button>
+        <button class="game-btn wide" data-pad="128" aria-label="Start">START</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- In-game menu sheet -->
+  <div class="sheet hidden" id="game-sheet" role="dialog" aria-modal="true" aria-labelledby="game-sheet-title">
+    <div class="inner">
+      <h2 id="game-sheet-title">Пауза</h2>
+      <p class="status" id="game-sheet-status">—</p>
+      <button class="btn" id="game-save">Сохранить</button>
+      <button class="btn ghost" id="game-load">Загрузить</button>
+      <button class="btn ghost" id="game-sound">Звук: выкл</button>
+      <button class="btn ghost" id="game-fullscreen">На весь экран</button>
+      <button class="btn ghost" id="game-exit">Выйти из игры</button>
+      <button class="btn ghost" id="game-help">Справка</button>
+      <button class="btn ghost small" id="game-sheet-close">Продолжить</button>
+    </div>
+  </div>
+
+  <!-- Technical details, collapsed -->
+  <details id="details">
+    <summary>Подробности</summary>
+    <div class="box">
+      <div><b>Версия:</b> <span id="detail-version">—</span></div>
+      <div><b>ROM:</b> <span id="detail-rom">—</span></div>
+      <div><b>Ядро:</b> <span id="detail-core">—</span></div>
+      <div><b>Время:</b> <span id="detail-time">—</span></div>
+      <pre id="detail-log">—</pre>
+      <button class="btn ghost small" id="download-log" style="margin-top:10px">Скачать отчёт</button>
+    </div>
+  </details>
+
+  <footer>Игра не поставляется: ROM приносит игрок. <a href="https://github.com/superoles-red/dune-web" target="_blank" rel="noopener">Исходники</a></footer>
+</main>
+
+<!-- Help sheet -->
+<div class="sheet hidden" id="help-sheet" role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="inner help">
+    <h2 id="help-title">Как играть</h2>
+    <h3>Что нужно</h3>
+    <p>Свой ROM Dune — The Battle for Arrakis (Sega Genesis, USA). Это дамп 1 МиБ; никуда не загружается и не входит в сборку — игра собирается на вашем устройстве.</p>
+    <h3>Управление</h3>
+    <p>Меню и вступление: кнопки A / START и стрелки (или D-pad на экране).</p>
+    <p>Карта: тап — выбрать, двойной тап — приказ, перетаскивание — прокрутка карты, щипок — масштаб.</p>
+    <p>Свой завод: коснитесь ещё раз (двойной тап) — откроется оригинальное меню здания.</p>
+    <p>Кнопка ☰ — пауза, сохранение, звук, полный экран. Игра сама сохраняется каждые 20 секунд.</p>
+    <button class="btn" id="help-close">Понятно</button>
+  </div>
+</div>
+
+<!-- Saves sheet -->
+<div class="sheet hidden" id="saves-sheet" role="dialog" aria-modal="true" aria-labelledby="saves-title">
+  <div class="inner">
+    <h2 id="saves-title">Сохранения</h2>
+    <p class="status" id="saves-status">—</p>
+    <div class="row">
+      <button class="btn small" id="save-load">Загрузить файл</button>
+      <button class="btn ghost small" id="save-download">Скачать файл</button>
+    </div>
+    <input id="save-file" type="file" accept=".json,application/json" hidden>
+    <button class="btn ghost" id="saves-close">Закрыть</button>
+  </div>
+</div>
+
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

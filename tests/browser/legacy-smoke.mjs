@@ -23,7 +23,7 @@ import { chromium } from 'playwright-core';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = Number(process.env.LEGACY_PORT || 4550);
 const LIVE_URL = process.env.LEGACY_URL || null;
-const URL = LIVE_URL || `http://127.0.0.1:${PORT}/legacy/`;
+const URL = LIVE_URL || `http://127.0.0.1:${PORT}/`;
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ROM = process.env.DUNE_ROM || '/Users/oleskarpov/Downloads/Dune - The Battle for Arrakis (USA).gen';
 const SEED = process.env.SEED === '1';
@@ -36,7 +36,8 @@ if (!fs.existsSync(ROM)) {
   process.exit(0);
 }
 fs.mkdirSync(OUT, { recursive: true });
-for (const required of ['web/legacy/index.html', 'web/legacy/byop-boot.mjs', 'web/legacy/shell.js', 'web/recompiler.worker.js', 'web/reference.json', 'web/runtime/runtime.wasm', 'web/host/host.mjs']) {
+const PREFIX = URL.replace(/^https?:\/\/[^/]+/, '').includes('/legacy/') ? 'web/legacy/' : 'web/';
+for (const required of [`${PREFIX}index.html`, `${PREFIX}byop-boot.mjs`, `${PREFIX}shell.js`, 'web/recompiler.worker.js', 'web/reference.json', 'web/runtime/runtime.wasm', 'web/host/host.mjs']) {
   if (!fs.existsSync(path.join(ROOT, required))) {
     console.error(`missing ${required}`);
     process.exit(1);
