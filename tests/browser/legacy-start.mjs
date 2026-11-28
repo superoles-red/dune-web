@@ -65,6 +65,15 @@ try {
   await page.waitForTimeout(1000);
   const dialogState = await state();
   if (!dialogState.dialog) note('START MISSION dialog did not appear');
+  const dialogReachable = await page.evaluate(() => {
+    const button = document.querySelector('#native-confirmation .confirmation-actions button');
+    if (!button) return false;
+    const rect = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    return !!hit && !!hit.closest('#native-confirmation');
+  });
+  console.log('dialog reachable:', dialogReachable);
+  if (!dialogReachable) note('START MISSION dialog is visually covered by another layer');
   await page.locator('#native-confirmation .confirmation-actions button').first().click();
   await page.waitForTimeout(2500);
   // Briefing pages advance on a tap; the hint must be visible while no HTML controls exist.
