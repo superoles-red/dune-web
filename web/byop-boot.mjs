@@ -770,14 +770,25 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     );
     // Chrome/Safari may keep the context suspended when the build took longer
     // than the user activation window: resume it on the first real gesture.
+    // iOS only allows the first AudioContext resume inside a gesture. The build
+    // can take minutes, so the original activation is gone by then; retry on
+    // every gesture until the audio pipeline is actually enabled.
     const resumeAudioOnGesture = () => {
+      if (host.audio?.enabled) {
+        window.removeEventListener('pointerdown', resumeAudioOnGesture, true);
+        window.removeEventListener('keydown', resumeAudioOnGesture, true);
+        return;
+      }
       try {
         host.audio?.resume?.()?.catch?.(() => {});
-        host.audio?.enable?.({ music: 100, sound: 100 }).catch(() => {});
+        host.audio?.enable?.({ music: 100, sound: 100 }).then(
+          () => console.log('[byop] audio enabled after gesture'),
+          (error) => console.warn('[byop] audio enable retry failed:', error?.message || error),
+        );
       } catch { /* audio is optional */ }
     };
-    window.addEventListener('pointerdown', resumeAudioOnGesture, { capture: true, once: true });
-    window.addEventListener('keydown', resumeAudioOnGesture, { capture: true, once: true });
+    window.addEventListener('pointerdown', resumeAudioOnGesture, { capture: true });
+    window.addEventListener('keydown', resumeAudioOnGesture, { capture: true });
 
     // Minimising the app must not leave a backlog: pause the device clock while
     // hidden, then drop queued PCM and restart cleanly on return (otherwise the
