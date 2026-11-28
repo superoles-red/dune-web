@@ -45,6 +45,7 @@ const state = {
   gameSha: null,
   host: null,
   frontendState: null,
+  savedRom: null,
   worker: null,
   building: false,
   error: null,
@@ -68,6 +69,10 @@ function mountBootScreen() {
     #byop-pick{display:inline-flex;align-items:center;justify-content:center;min-height:48px;min-width:220px;
       padding:10px 24px;background:#9393b6;border:2px outset #ddd;color:#000;font:bold 15px monospace;cursor:pointer}
     #byop-pick:active{border-style:inset}
+    #byop-start-saved,#byop-change{padding:10px 22px;background:#9393b6;border:2px outset #ddd;color:#000;font:bold 15px monospace;cursor:pointer}
+    #byop-change{background:#191b1d;color:#e2e2de;border:1px solid #8b8b84}
+    #byop-start-saved[hidden],#byop-change[hidden]{display:none}
+    #byop-start-saved:active,#byop-change:active{border-style:inset}
     #byop-progress{width:min(280px,70vw);height:10px;background:#242442;border:1px solid #9393b6;overflow:hidden}
     #byop-progress[hidden]{display:none}
     #byop-fill{display:block;height:100%;width:0;background:#00b600;transition:width .2s linear}
@@ -88,6 +93,8 @@ function mountBootScreen() {
     <h1>DUNE · THE BATTLE FOR ARRAKIS</h1>
     <p id="byop-text">Выберите ROM Sega Genesis (USA) — игра соберётся из него в этом браузере.</p>
     <label id="byop-pick">ВЫБРАТЬ ROM<input id="byop-rom" type="file" accept=".gen,.bin,.md,.rom,application/octet-stream" hidden></label>
+    <button id="byop-start-saved" type="button" hidden>ИГРАТЬ С СОХРАНЁННЫМ ROM</button>
+    <button id="byop-change" type="button" hidden>СМЕНИТЬ ROM</button>
     <div id="byop-progress" class="byop-indeterminate" hidden role="progressbar"><span id="byop-fill"></span></div>
     <p id="byop-hint" class="byop-small">ROM не отправляется на сервер: сборка идёт на устройстве.</p>
     <button id="byop-retry" type="button" hidden>ПОВТОРИТЬ</button>`;
@@ -101,11 +108,21 @@ function mountBootScreen() {
   ui.fill = panel.querySelector('#byop-fill');
   ui.hint = panel.querySelector('#byop-hint');
   ui.retry = panel.querySelector('#byop-retry');
+  ui.startSaved = panel.querySelector('#byop-start-saved');
+  ui.change = panel.querySelector('#byop-change');
 
   ui.input.addEventListener('change', () => {
     const file = ui.input.files?.[0];
     if (file) chooseRom(file);
   });
+  ui.change.addEventListener('click', () => {
+    ui.pick.hidden = false;
+    ui.startSaved.hidden = true;
+    ui.change.hidden = true;
+    ui.input.value = '';
+    ui.input.click();
+  });
+  ui.startSaved.addEventListener('click', () => startSavedRom());
   ui.retry.addEventListener('click', () => {
     state.error = null;
     resetUi();
@@ -196,6 +213,64 @@ async function writeCachedFrontendState(romSha, gameSha, bytes) {
   } catch (error) {
     console.warn('[byop] cannot cache the generated frontend state:', error.message);
   }
+}
+
+/* -------------------------------------------------------- saved ROM ----- */
+
+/** Remember the validated ROM in OPFS so a reload does not ask for the file.
+ *  It is stored on this device only and is never uploaded/cached by the SW. */
+async function saveRomInput(romBytes, name) {
+  try {
+    const rootDir = await (await navigator.storage.getDirectory()).getDirectoryHandle(CACHE_ROOT, { create: true });
+    const dir = await rootDir.getDirectoryHandle('rom-input', { create: true });
+    const file = await dir.getFileHandle('rom.bin', { create: true });
+    const writable = await file.createWritable();
+    await writable.write(romBytes);
+    await writable.close();
+    const meta = await dir.getFileHandle('rom.json', { create: true });
+    const metaWriter = await meta.createWritable();
+    await metaWriter.write(new TextEncoder().encode(JSON.stringify({ name: name || 'Dune (USA).gen', sha256: KNOWN_ROM_SHA256, savedAt: Date.now() })));
+    await metaWriter.close();
+  } catch (error) {
+    console.warn('[byop] cannot remember the ROM on this device:', error.message);
+  }
+}
+
+async function readSavedRom() {
+  try {
+    const rootDir = await (await navigator.storage.getDirectory()).getDirectoryHandle(CACHE_ROOT, { create: false });
+    const dir = await rootDir.getDirectoryHandle('rom-input', { create: false });
+    const bytes = new Uint8Array(await (await (await dir.getFileHandle('rom.bin')).getFile()).arrayBuffer());
+    let name = 'Dune (USA).gen';
+    try {
+      const meta = JSON.parse(new TextDecoder().decode(await (await (await dir.getFileHandle('rom.json')).getFile()).arrayBuffer()));
+      if (meta?.name) name = meta.name;
+    } catch { /* name is optional */ }
+    if (bytes.length !== ROM_BYTES) return null;
+    const digest = await sha256Hex(bytes);
+    if (digest !== KNOWN_ROM_SHA256) return null;
+    return { bytes, name };
+  } catch {
+    return null;
+  }
+}
+
+async function offerSavedRom() {
+  const saved = await readSavedRom();
+  if (!saved) return false;
+  state.savedRom = saved;
+  ui.text.textContent = `Найден сохранённый ROM (${saved.name}). Запускаем игру из памяти устройства…`;
+  ui.pick.hidden = true;
+  ui.startSaved.hidden = false;
+  ui.change.hidden = false;
+  setTimeout(() => { if (!state.building && !state.host) startSavedRom(); }, 300);
+  return true;
+}
+
+function startSavedRom() {
+  if (!state.savedRom || state.building || state.host) return;
+  ui.startSaved.hidden = true;
+  startRom(state.savedRom.bytes, state.savedRom.name, { saved: true });
 }
 
 /* ---------------------------------------------------------------- build --- */
@@ -401,15 +476,25 @@ function failScreen(message) {
 
 async function chooseRom(file) {
   if (state.building) return;
+  if (file.size !== ROM_BYTES) {
+    fail(new Error(`нужно ровно ${ROM_BYTES} байт, а у файла ${file.size}`));
+    return;
+  }
+  const romBytes = new Uint8Array(await file.arrayBuffer());
+  startRom(romBytes, file.name);
+}
+
+async function startRom(romBytes, name, { saved = false } = {}) {
+  if (state.building || state.host) return;
   state.building = true;
   state.error = null;
   ui.pick.hidden = true;
+  ui.startSaved.hidden = true;
+  ui.change.hidden = true;
   ui.retry.hidden = true;
   ui.progress.hidden = false;
   ui.progress.classList.add('byop-indeterminate');
   try {
-    if (file.size !== ROM_BYTES) throw new Error(`нужно ровно ${ROM_BYTES} байт, а у файла ${file.size}`);
-    const romBytes = new Uint8Array(await file.arrayBuffer());
     state.romBytes = romBytes;
     state.romSha = await sha256Hex(romBytes);
     if (state.romSha !== KNOWN_ROM_SHA256) {
@@ -417,6 +502,7 @@ async function chooseRom(file) {
     }
     ui.hint.textContent = `ROM ${romBytes.length} байт · SHA-256 ${state.romSha.slice(0, 16)}…`;
     window.__BYOP_ROM_SHA__ = state.romSha;
+    saveRomInput(romBytes, name);
     setStatus('build', 'Собираем игру из ROM…');
 
     const result = await buildCore(romBytes);
@@ -435,6 +521,7 @@ async function chooseRom(file) {
     // re-frames the native 320x224 screen (expanded overview on the mission map)
     // like the old SDL presentation did.
     host.setPresentation?.('auto');
+    host.expandedIntervalMs = 16; // old SDL presentation ran at display refresh
     host.start();
 
     // A gesture already happened (file picker click), so bring up audio once.
@@ -531,3 +618,8 @@ async function chooseRom(file) {
 mountBootScreen();
 window.__BYOP_BOOT__ = { state, chooseRom };
 if (typeof window.__BYOP_STATUS__ === 'undefined') setStatus('idle');
+// A previously validated ROM stays on this device, so a reload should not ask
+// for the file again; ?rom=pick forces the picker (e.g. to switch dumps).
+if (new URLSearchParams(location.search).get('rom') !== 'pick') {
+  offerSavedRom().catch((error) => console.warn('[byop] saved ROM unavailable:', error.message));
+}

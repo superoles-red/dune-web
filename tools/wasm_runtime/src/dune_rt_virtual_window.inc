@@ -192,6 +192,23 @@ static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, 
     }
 }
 
+/* Filled rectangle into the expanded RGBA frame (minimap viewport brackets). */
+static void dune_expanded_fill(uint8_t *dst, int w, int h, double x, double y,
+                               double rw, double rh, uint8_t r, uint8_t g, uint8_t b) {
+    int x0 = (int)x, y0 = (int)y;
+    int x1 = (int)(x + rw), y1 = (int)(y + rh);
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > w) x1 = w;
+    if (y1 > h) y1 = h;
+    for (int yy = y0; yy < y1; ++yy) {
+        for (int xx = x0; xx < x1; ++xx) {
+            size_t at = ((size_t)yy * (size_t)w + (size_t)xx) * 4u;
+            dst[at] = r; dst[at + 1u] = g; dst[at + 2u] = b; dst[at + 3u] = 255u;
+        }
+    }
+}
+
 static void dune_expanded_hud(uint8_t *dst, int w, int h, const uint8_t *ui,
                               int src_x, int src_y, int src_w, int src_h,
                               double dst_x, double dst_y, double dst_w, double dst_h) {
@@ -262,6 +279,30 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
                       hud_x, 0.0, hud_w, 144.0 * layout.ui_scale);
     dune_expanded_hud(dune_expanded_frame, w, h, view->ui, 0, 144, 320, 80,
                       hud_x, (double)h - 80.0 * layout.ui_scale, hud_w, 80.0 * layout.ui_scale);
+    /* The SDL presentation draws the minimap viewport rectangle as an 8-rect
+       overlay after the HUD; path A composes the frame in software instead. */
+    if (dune_view_map(&em_cpu)) {
+        EmWebMinimap m = em_web_native_minimap(&em_cpu);
+        if (m.visible) {
+            EmWebMiniRect r = em_web_minimap_view(m, layout.left, layout.top,
+                                                  layout.world_width, layout.world_height);
+            double scale = layout.ui_scale;
+            double x = (double)w - 320.0 * scale + ((double)m.x + r.x) * scale;
+            double y = (double)h - 224.0 * scale + ((double)m.y + r.y) * scale;
+            double thick = scale < 1.0 ? 1.0 : scale;
+            double rw = r.w * scale, rh = r.h * scale;
+            double cw = fmin(3.0 * scale, (rw + thick) / 2.0);
+            double ch = fmin(3.0 * scale, (rh + thick) / 2.0);
+            dune_expanded_fill(dune_expanded_frame, w, h, x, y, cw, thick, 220, 228, 240);
+            dune_expanded_fill(dune_expanded_frame, w, h, x + rw - cw, y, cw, thick, 220, 228, 240);
+            dune_expanded_fill(dune_expanded_frame, w, h, x, y + rh - thick, cw, thick, 220, 228, 240);
+            dune_expanded_fill(dune_expanded_frame, w, h, x + rw - cw, y + rh - thick, cw, thick, 220, 228, 240);
+            dune_expanded_fill(dune_expanded_frame, w, h, x, y, thick, ch, 220, 228, 240);
+            dune_expanded_fill(dune_expanded_frame, w, h, x + rw - thick, y, thick, ch, 220, 228, 240);
+            dune_expanded_fill(dune_expanded_frame, w, h, x, y + rh - ch, thick, ch, 220, 228, 240);
+            dune_expanded_fill(dune_expanded_frame, w, h, x + rw - thick, y + rh - ch, thick, ch, 220, 228, 240);
+        }
+    }
     dune_expanded_frame_width = (unsigned)w;
     dune_expanded_frame_height = (unsigned)h;
     return dune_expanded_frame;

@@ -7,7 +7,7 @@
  * mix a new index.html with stale modules (the bug that produced a black canvas
  * with only the on-screen buttons).
  */
-const VERSION = 'dune-byop-v5';
+const VERSION = 'dune-byop-v6';
 const SHELL_CACHE = VERSION;
 const ASSET_CACHE = VERSION + '-assets';
 const IMMUTABLE_PREFIXES = [
@@ -74,6 +74,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (request.mode === 'navigate') {
+    // cache:'no-store' also bypasses GitHub Pages' max-age=600 HTML cache, so a
+    // normal profile always gets the current index.html after a deploy.
     event.respondWith(networkFirst(request));
     return;
   }

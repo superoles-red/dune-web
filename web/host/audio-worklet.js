@@ -13,7 +13,7 @@
  *   {type:'ready', sampleRate}
  *   {type:'stats', frames, underruns, queued}
  */
-const RING_FRAMES = 16384;
+const RING_FRAMES = 32768; // 0.68 s jitter buffer: renders must not starve on slow frames
 const REPORT_EVERY_FRAMES = 4800;
 
 class DunePcmProcessor extends AudioWorkletProcessor {

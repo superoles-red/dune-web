@@ -240,7 +240,7 @@ export class DuneAudio {
   /* ----------------------------------------------------------------- pcm -- */
 
   /** Drain up to ``maxChunks`` packets and post them to the worklet. */
-  pump({ maxChunks = 8 } = {}) {
+  pump({ maxChunks = 4 } = {}) {
     if (!this.enabled || !this.node) return 0;
     const exports = this.host.exports;
     const memory = this.host.memory;
