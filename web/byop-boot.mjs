@@ -442,6 +442,45 @@ async function chooseRom(file) {
       () => console.log('[byop] audio enabled'),
       (error) => console.warn('[byop] audio unavailable:', error.message),
     );
+    // Chrome/Safari may keep the context suspended when the build took longer
+    // than the user activation window: resume it on the first real gesture.
+    const resumeAudioOnGesture = () => {
+      try {
+        host.audio?.resume?.()?.catch?.(() => {});
+        host.audio?.enable?.({ music: 100, sound: 100 }).catch(() => {});
+      } catch { /* audio is optional */ }
+    };
+    window.addEventListener('pointerdown', resumeAudioOnGesture, { capture: true, once: true });
+    window.addEventListener('keydown', resumeAudioOnGesture, { capture: true, once: true });
+
+    // The old engine received keyboard input through SDL; the BYOP runtime has no
+    // SDL event pipe, so forward the original Sega pad bits ourselves. This is
+    // what lets a desktop player advance the native intro/briefing with A/Start.
+    const KEY_PAD = { KeyZ: 64, KeyX: 16, KeyC: 32, Enter: 128, NumpadEnter: 128 };
+    const inNativeStoryScene = () => {
+      const ui = window.__DUNE_UI__;
+      const scene = ui?.state?.scene;
+      if (!ui || ui.view !== 'native' || !scene) return false;
+      return !['main', 'house', 'options', 'map', 'pause', 'building'].includes(scene);
+    };
+    const forwardPadKey = (event, down) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (!inNativeStoryScene()) return;
+      const bit = KEY_PAD[event.code];
+      if (!bit) return;
+      try {
+        host.exports.dune_web_pad(bit, down ? 1 : 0);
+      } catch { /* runtime without the pad export */ }
+    };
+    window.addEventListener('keydown', (event) => forwardPadKey(event, true), true);
+    window.addEventListener('keyup', (event) => forwardPadKey(event, false), true);
+    window.addEventListener('blur', () => {
+      for (const bit of Object.values(KEY_PAD)) {
+        try { host.exports.dune_web_pad(bit, 0); } catch { /* ignore */ }
+      }
+    });
 
     window.duneByop = {
       ready: true,

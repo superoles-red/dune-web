@@ -167,4 +167,55 @@
   });
 })();
 </script>
+<script id="byop-errors">
+(function () {
+  var errors = [];
+  window.__DUNE_ERRORS__ = errors;
+  function report() {
+    var ui = window.__DUNE_UI__;
+    var host = window.__DUNE_HOST;
+    return JSON.stringify({
+      url: location.href,
+      ua: navigator.userAgent,
+      byop: window.__BYOP_STATUS__ || null,
+      scene: ui && ui.state ? { scene: ui.state.scene, ready: ui.state.sceneReady, inputKind: ui.state.inputKind } : null,
+      ui: ui ? { view: ui.view, displayed: ui.displayed, busy: ui.busy, pending: ui.pendingScreen ? ui.pendingScreen.kind : null } : null,
+      host: host ? { instructions: host.metrics && host.metrics.instructions, frames: host.metrics && host.metrics.renderedFrames, fault: host.metrics && host.metrics.fault, stalled: host.metrics && host.metrics.stalled } : null,
+      errors: errors.slice(0, 20),
+    }, null, 2);
+  }
+  function panel() {
+    var existing = document.getElementById('byop-error-panel');
+    if (existing) return existing;
+    var box = document.createElement('div');
+    box.id = 'byop-error-panel';
+    box.style.cssText = 'position:fixed;z-index:9999;left:8px;right:8px;bottom:8px;max-height:60vh;overflow:auto;background:#111;color:#f2e6c8;border:2px solid #b66;padding:12px;font:12px/1.4 monospace;white-space:pre-wrap';
+    box.textContent = 'Игра сообщила об ошибке:\n' + report();
+    var actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px';
+    var copy = document.createElement('button'); copy.textContent = 'Скопировать отчёт';
+    copy.onclick = function () { navigator.clipboard && navigator.clipboard.writeText(report()); };
+    var reload = document.createElement('button'); reload.textContent = 'Перезагрузить без кэша';
+    reload.onclick = function () { Promise.all([navigator.serviceWorker.getRegistrations().then(function (r) { return Promise.all(r.map(function (x) { return x.unregister(); })); }), caches.keys().then(function (k) { return Promise.all(k.map(function (x) { return caches.delete(x); })); })]).then(function () { location.reload(); }); };
+    var close = document.createElement('button'); close.textContent = 'Закрыть'; close.onclick = function () { box.remove(); };
+    actions.append(copy, reload, close);
+    box.append(actions);
+    document.body.append(box);
+    return box;
+  }
+  window.__DUNE_SHOW_ERROR__ = panel;
+  function record(message, detail) {
+    errors.push({ message: String(message).slice(0, 500), detail: detail ? String(detail).slice(0, 800) : null, at: Date.now() });
+    panel();
+  }
+  window.addEventListener('error', function (event) {
+    if (!event || !event.message) return;
+    record(event.message, (event.error && event.error.stack) || '');
+  });
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event && event.reason;
+    record(reason && reason.message ? reason.message : reason, reason && reason.stack);
+  });
+})();
+</script>
 <script type="module" src="byop-boot.mjs?v=20261128-legacy-byop"></script></body></html>
