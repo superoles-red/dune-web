@@ -2,18 +2,18 @@
   "format": 1,
   "kind": "dune-runtime-wasm",
   "generated_by": "tools/wasm_runtime/build_runtime.py",
-  "generated_at_utc": "2026-11-28T15:29:52Z",
+  "generated_at_utc": "2026-11-28T15:41:27Z",
   "game": "Dune — The Battle for Arrakis (USA)",
   "runtime_version": 2,
   "wasm": {
     "file": "runtime.wasm",
-    "sha256": "addd42a9884fd02584da951c432fde1f1102c59bb68ffba825837a655c54f34e",
-    "bytes": 901373,
+    "sha256": "805c45dab99fb924ee53154343ca4263753325c81f73085c983c1d8217eefe1c",
+    "bytes": 901492,
     "deterministic": true,
     "determinism": {
       "deterministic": true,
-      "first_sha256": "addd42a9884fd02584da951c432fde1f1102c59bb68ffba825837a655c54f34e",
-      "second_sha256": "addd42a9884fd02584da951c432fde1f1102c59bb68ffba825837a655c54f34e",
+      "first_sha256": "805c45dab99fb924ee53154343ca4263753325c81f73085c983c1d8217eefe1c",
+      "second_sha256": "805c45dab99fb924ee53154343ca4263753325c81f73085c983c1d8217eefe1c",
       "note": "Two consecutive wasm-ld links from identical objects."
     }
   },
@@ -103,7 +103,7 @@
     "abi_fill_sha256": "a576a0cd764c6034c4cdf1e667f1bb92d1ff421f996aba61ab7f149b786d9956",
     "loader_template_sha256": "768047e37a5ed4f977629c62406c8bc7cf6433df04d78a56ce9ba79cf3e80b8a",
     "stub_game_source_sha256": "00df926f2fb4fa70f0092fb4542624e09b8ea66a8dccfd91ebd9d8465c9e29e5",
-    "virtual_window_inc_sha256": "ba5f0a300c25c3e60daf3b495e60b741afe96ce4e895552be483d038ac575089",
+    "virtual_window_inc_sha256": "1ebccefaa5c6004cc599c08841ab74b322b533286c20f9a8d640a2a5826ac714",
     "abi_spec_sha256": "7424a1faf939a33c72ba77eb9c03978fdf5002e3442cfa6282908ce14d24b159"
   },
   "data_check": {
@@ -699,6 +699,7 @@
       "dune_web_selection_debug",
       "dune_web_selection_reset",
       "dune_web_selection_tap_screen",
+      "dune_web_set_expanded_output_divisor",
       "dune_web_set_hidden",
       "dune_web_set_map_hud_top",
       "dune_web_set_paused",
@@ -1367,7 +1368,7 @@
       "ADDR_CPU": 380072,
       "ADDR_RAM": 380150,
       "ADDR_Z80_RAM": 741952,
-      "ADDR_ROM": 19205432,
+      "ADDR_ROM": 19205448,
       "ADDR_SAVE_BUFFER": 117920,
       "ADDR_VDP_VRAM": 445736,
       "ADDR_VDP_CRAM": 511272,
@@ -1400,7 +1401,7 @@
         "emcc",
         "--version"
       ],
-      "seconds": 0.26,
+      "seconds": 0.29,
       "returncode": 0
     },
     {
@@ -1423,7 +1424,7 @@
         "-o",
         "<build>/obj/runtime.o"
       ],
-      "seconds": 1.49,
+      "seconds": 1.61,
       "returncode": 0
     },
     {
@@ -1438,7 +1439,7 @@
         "-o",
         "<build>/obj/audio.o"
       ],
-      "seconds": 1.15,
+      "seconds": 1.11,
       "returncode": 0
     },
     {
@@ -1465,7 +1466,7 @@
         "-o",
         "<build>/runtime.wasm"
       ],
-      "seconds": 1.08,
+      "seconds": 1.22,
       "returncode": 0
     },
     {
@@ -1484,7 +1485,7 @@
         "-o",
         "<build>/obj/stub_game.o"
       ],
-      "seconds": 0.14,
+      "seconds": 0.13,
       "returncode": 0
     },
     {
@@ -1518,7 +1519,7 @@
         "<build>/dump_abi.mjs",
         "<build>/runtime.wasm"
       ],
-      "seconds": 0.16,
+      "seconds": 0.15,
       "returncode": 0
     },
     {

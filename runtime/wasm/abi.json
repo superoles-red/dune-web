@@ -76,7 +76,7 @@
     "frame_bytes": 230400,
     "pages": 1024,
     "ram": 380150,
-    "rom": 19205432,
+    "rom": 19205448,
     "rom_size": 1048576,
     "save_buffer": 117920,
     "save_buffer_bytes": 262144,
@@ -88,6 +88,6 @@
   "memory_pages": 1024,
   "pointer_bits": 32,
   "rom_bytes": 1048576,
-  "runtime_bytes": 901373,
-  "runtime_sha256": "addd42a9884fd02584da951c432fde1f1102c59bb68ffba825837a655c54f34e"
+  "runtime_bytes": 901492,
+  "runtime_sha256": "805c45dab99fb924ee53154343ca4263753325c81f73085c983c1d8217eefe1c"
 }

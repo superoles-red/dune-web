@@ -166,6 +166,13 @@ static uint8_t *dune_expanded_frame = NULL;
 static size_t dune_expanded_frame_capacity = 0;
 static unsigned dune_expanded_frame_width = 0;
 static unsigned dune_expanded_frame_height = 0;
+/* Presentation-only output scale: 1 = CSS pixels (desktop), 1/DPR = physical
+   device pixels (phones, like the old engine canvas). 0 = automatic. */
+static double dune_expanded_output_divisor = 0.0;
+
+EMSCRIPTEN_KEEPALIVE void dune_web_set_expanded_output_divisor(double divisor) {
+    dune_expanded_output_divisor = (divisor > 0.0 && divisor < 1.0) ? divisor : 0.0;
+}
 
 static void dune_expanded_black(uint8_t *dst, size_t pixels) {
     memset(dst, 0, pixels * 4u);
@@ -305,13 +312,14 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
        pixelated CSS upscale do the enlargement, exactly like the untouched
        building/native screens. Desktop keeps its CSS-resolution frame. */
     double out_scale = 1.0;
-    if (layout.ui_scale > 0.0 && layout.ui_scale < 2.0) out_scale = layout.ui_scale;
+    if (dune_expanded_output_divisor > 0.0) out_scale = dune_expanded_output_divisor;
+    else if (layout.ui_scale > 0.0 && layout.ui_scale < 2.0) out_scale = layout.ui_scale;
     int out_w = (int)((double)w / out_scale + 0.5);
     int out_h = (int)((double)h / out_scale + 0.5);
     if (out_w < 1) out_w = 1;
     if (out_h < 1) out_h = 1;
-    if (out_w > 2048) out_w = 2048;
-    if (out_h > 2048) out_h = 2048;
+    if (out_w > 4096) out_w = 4096;
+    if (out_h > 4096) out_h = 4096;
     w = out_w;
     h = out_h;
     double hud_scale = layout.ui_scale / out_scale;

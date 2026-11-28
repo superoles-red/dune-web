@@ -760,6 +760,20 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     // re-frames the native 320x224 screen (expanded overview on the mission map)
     // like the old SDL presentation did.
     host.setPresentation?.('auto');
+    // SPEC docs/specs/map-presentation.md: the old engine rendered its canvas at
+    // physical (CSS x DPR) resolution; the software expanded map looked greasy
+    // when composed at CSS or native HUD resolution. ?hidpi=1 composes the map
+    // frame in device pixels (crisp, sub-pixel camera pan).
+    const dprForFrame = Math.min(globalThis.devicePixelRatio || 1, 3);
+    const hidpiRequested = new URLSearchParams(location.search).has('hidpi');
+    const hidpiFits = innerWidth * dprForFrame <= 4096 && innerHeight * dprForFrame <= 4096;
+    if ((hidpiRequested || dprForFrame >= 2) && hidpiFits) {
+      try {
+        host.exports.dune_web_set_expanded_output_divisor?.(1 / dprForFrame);
+        window.__BYOP_HIDPI__ = 1 / dprForFrame;
+        console.log('[byop] expanded frame at device pixels, divisor', 1 / dprForFrame);
+      } catch (error) { console.warn('[byop] hidpi frame unavailable:', error.message); }
+    }
     host.expandedIntervalMs = 16; // old SDL presentation ran at display refresh
     host.start();
 
@@ -949,7 +963,13 @@ async function startRom(romBytes, name, { saved = false } = {}) {
       const ui = window.__DUNE_UI__;
       if (!ui || !host) return;
       host.expandedIntervalMs = ui.view === 'native' ? 16 : 40;
-    }, 400);
+      // Keep the map presentation sticky. Deriving it from cameraDebug().map
+      // every frame made the host flip between the expanded frame and the
+      // native 320x224 frame; the canvas backing size changed with it, which is
+      // exactly the 'old TV / extra pixels while swiping' the iPhone showed.
+      const mapScene = ui.view === 'native' && ui.state && ui.state.scene === 'map';
+      host.setPresentation?.(mapScene ? 'expanded' : 'auto');
+    }, 250);
     window.addEventListener('beforeunload', () => clearInterval(renderTimer));
     const traceTimer = setInterval(() => {
       const ui = window.__DUNE_UI__;
