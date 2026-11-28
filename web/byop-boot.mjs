@@ -552,14 +552,21 @@ async function startRom(romBytes, name, { saved = false } = {}) {
       setStatus('build', 'Собираем игру из ROM…');
       const result = await buildCore(romBytes);
       state.gameSha = result.output_sha256 || result.game_sha256;
-      // Release Pyodide and the worker as soon as the core is on disk: on an
+      // The worker transfers the built core back, so the game can start even if
+      // this browser's OPFS is unusable (WebKit/iOS may fail createWritable).
+      if (result.core_bytes && result.core_bytes.length > 1024) {
+        state.gameBytes = result.core_bytes instanceof Uint8Array ? result.core_bytes : new Uint8Array(result.core_bytes);
+      }
+      // Release Pyodide and the worker as soon as the core is available: on an
       // iPhone the ~100 MB recompiler heap is exactly what pushes Safari into
       // killing the tab right after the first boot/music.
       try { state.worker?.terminate?.(); } catch { /* ignore */ }
       state.worker = null;
       console.log('[byop] recompiler worker released');
-      setStatus('load', 'Загружаем ядро игры…');
-      state.gameBytes = await readCachedGame(state.romSha);
+      if (!state.gameBytes) {
+        setStatus('load', 'Загружаем ядро игры…');
+        state.gameBytes = await readCachedGame(state.romSha);
+      }
     }
     const gameBytes = state.gameBytes;
 

@@ -13,7 +13,7 @@ const PHASES = new Set([
 let pyodide = null;
 let reference = null;
 
-const post = (type, payload = {}) => self.postMessage({ type, ...payload });
+const post = (type, payload = {}, transfer = []) => self.postMessage({ type, ...payload }, transfer);
 const progress = (phase, fraction, label) => post('state', { phase, fraction, label });
 
 async function sha256Hex(bytes) {
@@ -133,7 +133,16 @@ async function build({ romBytes, force = false }) {
     };
     await writeCachedCore(romSha, meta, game);
   }
-  post('result', { result });
+  // Always hand the built core back to the page. Some WebKit/iOS builds have no
+  // usable OPFS (createWritable fails with UnknownError), and without this the
+  // page could not start the game even though the build succeeded.
+  if (result.ok) {
+    const game = py.FS.readFile('/work/build/game.wasm');
+    result.core_bytes = game;
+    post('result', { result }, [game.buffer]);
+  } else {
+    post('result', { result });
+  }
 }
 
 self.onmessage = async (event) => {
