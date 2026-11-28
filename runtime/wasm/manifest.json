@@ -2,18 +2,18 @@
   "format": 1,
   "kind": "dune-runtime-wasm",
   "generated_by": "tools/wasm_runtime/build_runtime.py",
-  "generated_at_utc": "2026-11-28T15:15:13Z",
+  "generated_at_utc": "2026-11-28T15:23:36Z",
   "game": "Dune — The Battle for Arrakis (USA)",
   "runtime_version": 2,
   "wasm": {
     "file": "runtime.wasm",
-    "sha256": "0a89a836db980c581f4a5fbfe91732f9e1160a8864d594fdef457906b3044a32",
+    "sha256": "56470da1c8f60b475cadea599fc3e998356f9902a0052d153e35c5ab53a497b3",
     "bytes": 900957,
     "deterministic": true,
     "determinism": {
       "deterministic": true,
-      "first_sha256": "0a89a836db980c581f4a5fbfe91732f9e1160a8864d594fdef457906b3044a32",
-      "second_sha256": "0a89a836db980c581f4a5fbfe91732f9e1160a8864d594fdef457906b3044a32",
+      "first_sha256": "56470da1c8f60b475cadea599fc3e998356f9902a0052d153e35c5ab53a497b3",
+      "second_sha256": "56470da1c8f60b475cadea599fc3e998356f9902a0052d153e35c5ab53a497b3",
       "note": "Two consecutive wasm-ld links from identical objects."
     }
   },
@@ -103,7 +103,7 @@
     "abi_fill_sha256": "a576a0cd764c6034c4cdf1e667f1bb92d1ff421f996aba61ab7f149b786d9956",
     "loader_template_sha256": "768047e37a5ed4f977629c62406c8bc7cf6433df04d78a56ce9ba79cf3e80b8a",
     "stub_game_source_sha256": "00df926f2fb4fa70f0092fb4542624e09b8ea66a8dccfd91ebd9d8465c9e29e5",
-    "virtual_window_inc_sha256": "0f28d0722ed40b11b0523a4ad306f957fb083c089dd589f985702bb6cd306064",
+    "virtual_window_inc_sha256": "f8d9b4bf730823d061d225e98087bdcf78f5fd6082e8b7b04a07e8579b35d1c3",
     "abi_spec_sha256": "7424a1faf939a33c72ba77eb9c03978fdf5002e3442cfa6282908ce14d24b159"
   },
   "data_check": {
@@ -1400,7 +1400,7 @@
         "emcc",
         "--version"
       ],
-      "seconds": 0.25,
+      "seconds": 0.2,
       "returncode": 0
     },
     {
@@ -1423,7 +1423,7 @@
         "-o",
         "<build>/obj/runtime.o"
       ],
-      "seconds": 1.61,
+      "seconds": 1.42,
       "returncode": 0
     },
     {
@@ -1438,7 +1438,7 @@
         "-o",
         "<build>/obj/audio.o"
       ],
-      "seconds": 1.12,
+      "seconds": 1.06,
       "returncode": 0
     },
     {
@@ -1465,7 +1465,7 @@
         "-o",
         "<build>/runtime.wasm"
       ],
-      "seconds": 1.21,
+      "seconds": 1.08,
       "returncode": 0
     },
     {
@@ -1484,7 +1484,7 @@
         "-o",
         "<build>/obj/stub_game.o"
       ],
-      "seconds": 0.14,
+      "seconds": 0.13,
       "returncode": 0
     },
     {
@@ -1508,7 +1508,7 @@
         "<build>/stub_game.wasm",
         "<build>/obj/stub_game.o"
       ],
-      "seconds": 0.13,
+      "seconds": 0.12,
       "returncode": 0
     },
     {
@@ -1545,7 +1545,7 @@
         "-o",
         "<build>/runtime.determinism-2.wasm"
       ],
-      "seconds": 1.07,
+      "seconds": 1.08,
       "returncode": 0
     }
   ],
