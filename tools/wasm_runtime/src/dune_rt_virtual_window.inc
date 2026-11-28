@@ -189,6 +189,12 @@ static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, 
         int y1 = y0 + 1 < sh ? y0 + 1 : y0;
         double ty = fy - y0;
         if (ty < 0.0) ty = 0.0;
+        /* Sharpen the bilinear ramp: keep the centre of every texel flat and
+           interpolate only across the edge. Pure bilinear looked washed out on
+           a 1.3375 scale; pure nearest produced the wavy accordion. */
+        ty = (ty - 0.5) * 1.75 + 0.5;
+        if (ty < 0.0) ty = 0.0;
+        if (ty > 1.0) ty = 1.0;
         for (int x = 0; x < w; ++x) {
             double fx = ((double)x + 0.5) / scale - 0.5;
             if (fx < 0.0) fx = 0.0;
@@ -197,6 +203,9 @@ static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, 
             int x1 = x0 + 1 < sw ? x0 + 1 : x0;
             double tx = fx - x0;
             if (tx < 0.0) tx = 0.0;
+            tx = (tx - 0.5) * 1.75 + 0.5;
+            if (tx < 0.0) tx = 0.0;
+            if (tx > 1.0) tx = 1.0;
             size_t s00 = ((size_t)y0 * (size_t)sw + (size_t)x0) * 4u;
             size_t s10 = ((size_t)y0 * (size_t)sw + (size_t)x1) * 4u;
             size_t s01 = ((size_t)y1 * (size_t)sw + (size_t)x0) * 4u;

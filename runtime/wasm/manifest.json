@@ -2,18 +2,18 @@
   "format": 1,
   "kind": "dune-runtime-wasm",
   "generated_by": "tools/wasm_runtime/build_runtime.py",
-  "generated_at_utc": "2026-11-28T15:09:02Z",
+  "generated_at_utc": "2026-11-28T15:15:13Z",
   "game": "Dune — The Battle for Arrakis (USA)",
   "runtime_version": 2,
   "wasm": {
     "file": "runtime.wasm",
-    "sha256": "013c7bb2c0a660052d3d8dca583460f4bcaedf8b450531140f4995593938fb95",
-    "bytes": 900799,
+    "sha256": "0a89a836db980c581f4a5fbfe91732f9e1160a8864d594fdef457906b3044a32",
+    "bytes": 900957,
     "deterministic": true,
     "determinism": {
       "deterministic": true,
-      "first_sha256": "013c7bb2c0a660052d3d8dca583460f4bcaedf8b450531140f4995593938fb95",
-      "second_sha256": "013c7bb2c0a660052d3d8dca583460f4bcaedf8b450531140f4995593938fb95",
+      "first_sha256": "0a89a836db980c581f4a5fbfe91732f9e1160a8864d594fdef457906b3044a32",
+      "second_sha256": "0a89a836db980c581f4a5fbfe91732f9e1160a8864d594fdef457906b3044a32",
       "note": "Two consecutive wasm-ld links from identical objects."
     }
   },
@@ -103,7 +103,7 @@
     "abi_fill_sha256": "a576a0cd764c6034c4cdf1e667f1bb92d1ff421f996aba61ab7f149b786d9956",
     "loader_template_sha256": "768047e37a5ed4f977629c62406c8bc7cf6433df04d78a56ce9ba79cf3e80b8a",
     "stub_game_source_sha256": "00df926f2fb4fa70f0092fb4542624e09b8ea66a8dccfd91ebd9d8465c9e29e5",
-    "virtual_window_inc_sha256": "f7891bf8cc61fb9253a6cc6f3949f0c86abea1cac2c904e689a269699b04bcef",
+    "virtual_window_inc_sha256": "0f28d0722ed40b11b0523a4ad306f957fb083c089dd589f985702bb6cd306064",
     "abi_spec_sha256": "7424a1faf939a33c72ba77eb9c03978fdf5002e3442cfa6282908ce14d24b159"
   },
   "data_check": {
@@ -1400,7 +1400,7 @@
         "emcc",
         "--version"
       ],
-      "seconds": 0.31,
+      "seconds": 0.25,
       "returncode": 0
     },
     {
@@ -1423,7 +1423,7 @@
         "-o",
         "<build>/obj/runtime.o"
       ],
-      "seconds": 1.59,
+      "seconds": 1.61,
       "returncode": 0
     },
     {
@@ -1465,7 +1465,7 @@
         "-o",
         "<build>/runtime.wasm"
       ],
-      "seconds": 1.22,
+      "seconds": 1.21,
       "returncode": 0
     },
     {
@@ -1518,7 +1518,7 @@
         "<build>/dump_abi.mjs",
         "<build>/runtime.wasm"
       ],
-      "seconds": 0.16,
+      "seconds": 0.15,
       "returncode": 0
     },
     {
@@ -1545,7 +1545,7 @@
         "-o",
         "<build>/runtime.determinism-2.wasm"
       ],
-      "seconds": 1.09,
+      "seconds": 1.07,
       "returncode": 0
     }
   ],
