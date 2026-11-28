@@ -49,7 +49,10 @@ export class NativeArt {
  blit(c,img,x,y,scale=1){if(img)c.drawImage(img,x,y,img.width*scale,img.height*scale);}
  repeat(c,img,x,y,w,h,unit=1){if(!img||w<=0||h<=0)return;c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
   // Straight1px profiles and uniform samples may be extruded without distortion.
-  if(img.width===1||img.height===1||img.width===8&&img.height===8){const p=c.createPattern(img,'repeat');p.setTransform(new DOMMatrix([unit,0,0,unit,x,y]));c.fillStyle=p;c.fillRect(x,y,w,h);}
+  // Pattern origin/scale via the CTM instead of CanvasPattern.setTransform:
+  // WebKit (Safari/iOS) silently misplaces or ignores pattern transforms, which
+  // left every tiny button-frame strip unpainted (blank black buttons).
+  if(img.width<=8&&img.height<=8){c.translate(x,y);c.scale(unit,unit);const p=c.createPattern(img,'repeat');if(p){c.fillStyle=p;c.fillRect(0,0,w/unit,h/unit);}}
   else for(let yy=y;yy<y+h;yy+=img.height*unit)for(let xx=x;xx<x+w;xx+=img.width*unit)this.blit(c,img,xx,yy,unit);
   c.restore();
  }

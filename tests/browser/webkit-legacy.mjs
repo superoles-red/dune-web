@@ -66,6 +66,19 @@ try {
   console.log('home:', JSON.stringify(home));
   await page.screenshot({ path: path.join(OUT, '01-menu.png') });
   if (!home.buttons.length) note('legacy home has no visible buttons in WebKit');
+  // The old art pipeline paints labels/frames into per-button canvases. WebKit
+  // used to get blank crops from the packed atlas (img.decode + createImageBitmap
+  // crop overload), leaving black-on-black buttons; assert the pixels exist.
+  const painted = await page.evaluate(() => [...document.querySelectorAll('#scene-ui button')].map((button) => {
+    const canvas = button.querySelector('canvas');
+    if (!canvas || !canvas.width || !canvas.height) return { id: button.id, painted: 0 };
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let nonBlack = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i] || data[i + 1] || data[i + 2] || data[i + 3]) nonBlack += 1;
+    return { id: button.id, painted: nonBlack };
+  }));
+  console.log('button canvases:', JSON.stringify(painted));
+  if (!painted.some((item) => item.painted > 100)) note('button canvases are blank in WebKit (atlas decode regression)');
 
   await page.evaluate(() => document.getElementById('new-campaign')?.click());
   await page.waitForTimeout(1500);

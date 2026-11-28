@@ -14,21 +14,32 @@ export function atlasEntries(manifest,expected,width,height){
 }
 
 export async function loadRuntimeAtlas(expected,{onProgress=()=>{},doc=globalThis.document,bitmapFactory=globalThis.createImageBitmap}={}){
- const base=new URL('./ui-assets/',import.meta.url),[manifest,image]=await Promise.all([
+ const base=new URL('./ui-assets/',import.meta.url),atlasUrl=new URL('runtime-atlas.png?v=20261113-feedback',base);
+ const loadAtlas=async()=>{
+  // Decode the whole atlas through a Blob. WebKit may reject <img>.decode() for a
+  // large sheet and then hand back an undecoded image, so canvas crops came out
+  // blank and every packed UI part (buttons, frames, glyphs) was invisible.
+  try{
+   const response=await fetch(atlasUrl,{cache:'no-store'});
+   if(!response.ok)throw Error('atlas HTTP '+response.status);
+   const blob=await response.blob();
+   if(typeof bitmapFactory==='function')return await bitmapFactory.call(globalThis,blob);
+  }catch{/* fall back to the <img> loader below */}
+  return loadAssetImage(atlasUrl);
+ };
+ const [manifest,image]=await Promise.all([
   loadAssetJSON(new URL('runtime-atlas.json?v=20261113-feedback',base)),
-  loadAssetImage(new URL('runtime-atlas.png?v=20261113-feedback',base)),
+  loadAtlas(),
  ]);
- const entries=atlasEntries(manifest,expected,image.naturalWidth,image.naturalHeight),images=new Map();
+ const width=image.naturalWidth||image.width,height=image.naturalHeight||image.height;
+ const entries=atlasEntries(manifest,expected,width,height),images=new Map();
  try{for(const [key,path,[x,y,w,h]]of entries){
-  let crop;
-  if(typeof bitmapFactory==='function')crop=await bitmapFactory.call(globalThis,image,x,y,w,h);
-  else{
-   crop=doc.createElement('canvas');crop.width=w;crop.height=h;
-   // Static source images need no independent GPU render targets. This fallback
-   // requests CPU backing on browsers without the immutable ImageBitmap API.
-   const context=crop.getContext('2d',{willReadFrequently:true});if(!context)throw Error('Native graphics canvas is unavailable');
-   context.imageSmoothingEnabled=false;context.drawImage(image,x,y,w,h,0,0,w,h);
-  }
+  // WebKit/Safari accepts the cropped createImageBitmap(source,sx,sy,sw,sh)
+  // overload but returns empty crops, so packed button/frame/glyph parts were
+  // invisible on iPhone. Crop through a canvas on every engine instead.
+  const crop=doc.createElement('canvas');crop.width=w;crop.height=h;
+  const context=crop.getContext('2d',{willReadFrequently:true});if(!context)throw Error('Native graphics canvas is unavailable');
+  context.imageSmoothingEnabled=false;context.drawImage(image,x,y,w,h,0,0,w,h);
   // Original identity is retained for the existing tinted-glyph cache.
   images.set(key,crop);crop.src=new URL('./'+path,import.meta.url).href;
   onProgress({stage:'graphics',loaded:images.size,total:entries.length});
