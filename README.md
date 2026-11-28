@@ -12,6 +12,10 @@
 An unofficial BYOP web port of the USA Sega Genesis release. No game data is shipped: the player
 supplies the ROM, and the Sega program is statically recompiled to WebAssembly in the browser.
 
+## Статус
+
+Полная приёмка: [docs/FINAL-ACCEPTANCE.md](docs/FINAL-ACCEPTANCE.md). Живая версия: https://superoles-red.github.io/dune-web/
+
 ## Как проверить на телефоне или ПК
 
 1. Откройте [superoles-red.github.io/dune-web](https://superoles-red.github.io/dune-web/) в
