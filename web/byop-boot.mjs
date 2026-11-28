@@ -931,6 +931,17 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     window.addEventListener('resize', syncVirtualSize);
     window.addEventListener('orientationchange', () => setTimeout(syncVirtualSize, 400));
     if (globalThis.visualViewport) globalThis.visualViewport.addEventListener('resize', syncVirtualSize);
+    // Never leave the black transition curtain covering a stuck native route
+    // (e.g. a poll that never matches because the scene is 'unknown').
+    setInterval(() => {
+      const ui = window.__DUNE_UI__;
+      if (!ui || !ui.pendingScreen || !ui.busy) return;
+      const pending = ui.pendingScreen;
+      if (!pending.__byopSince) pending.__byopSince = performance.now();
+      if (performance.now() - pending.__byopSince < 8000) return;
+      record('route-timeout', `${pending.kind}`);
+      try { ui.failNative?.(pending, Error('native route timeout')); } catch (error) { record('route-timeout-fail', error.message); }
+    }, 1000);
     // Frontend menus paint several large art canvases; keeping the emulated
     // native frame at a full 60 fps underneath makes those transitions stutter
     // on a phone. Menus only need a slow native backdrop; the map keeps 60 fps.
@@ -953,20 +964,6 @@ async function startRom(romBytes, name, { saved = false } = {}) {
         }
       }
     }, 100);
-    // The old frontend always shows the HTML home screen over the native intro.
-    // On some phones the shell imports but stays in the native intro forever;
-    // route back to home once, then surface a visible report if the UI is blank.
-    const rescue = setInterval(() => {
-      const ui = window.__DUNE_UI__;
-      if (!ui) return;
-      clearInterval(rescue);
-      setTimeout(async () => {
-        if (ui.view !== 'home' && typeof ui.mainMenu === 'function') {
-          try { await ui.mainMenu({ save: false }); window.__BYOP_HOME_RESCUE__ = 'mainMenu'; console.log('[byop] home rescue: mainMenu'); }
-          catch (error) { console.warn('[byop] home rescue failed:', error.message); }
-        }
-      }, 2500);
-    }, 400);
     // The shell can import successfully and still leave a blank home screen
     // (asset/layout failure on a phone). Surface that instead of a black page.
     const health = setInterval(() => {
