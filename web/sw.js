@@ -7,7 +7,7 @@
  * mix a new index.html with stale modules (the bug that produced a black canvas
  * with only the on-screen buttons).
  */
-const VERSION = 'dune-byop-v4';
+const VERSION = 'dune-byop-v5';
 const SHELL_CACHE = VERSION;
 const ASSET_CACHE = VERSION + '-assets';
 const IMMUTABLE_PREFIXES = [
@@ -47,7 +47,8 @@ self.addEventListener('message', (event) => {
 const networkFirst = async (request) => {
   const cache = await caches.open(SHELL_CACHE);
   try {
-    const response = await fetch(request);
+    // bypass the HTTP cache (Pages serves max-age=600): a deploy must win
+    const response = await fetch(request, { cache: 'no-store' });
     if (response.ok) cache.put(request, response.clone());
     return response;
   } catch {

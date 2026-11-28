@@ -482,6 +482,24 @@ async function chooseRom(file) {
       }
     });
 
+    // Native briefing/cutscene screens have no HTML controls until their last
+    // page, so a first-time player may think the game is stuck. Show a small
+    // hint like the old touch UX did.
+    const hint = document.createElement('div');
+    hint.id = 'byop-native-hint';
+    hint.textContent = 'ТАП / КЛИК — ДАЛЕЕ';
+    hint.style.cssText = 'position:fixed;z-index:8;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);padding:6px 10px;background:#191b1de0;border:1px solid #8b8b8488;color:#e2e2de;font:12px/1 monospace;letter-spacing:.08em;pointer-events:none;opacity:0;transition:opacity .3s';
+    if (document.body) document.body.append(hint);
+    else document.addEventListener('DOMContentLoaded', () => document.body.append(hint));
+    let hintTimer = 0;
+    const updateNativeHint = () => {
+      const ui = window.__DUNE_UI__;
+      const scene = ui?.state?.scene;
+      const show = !!ui && ui.view === 'native' && typeof scene === 'string' && scene.includes('briefing');
+      hint.style.opacity = show ? '1' : '0';
+    };
+    hintTimer = window.setInterval(updateNativeHint, 800);
+
     window.duneByop = {
       ready: true,
       host,
