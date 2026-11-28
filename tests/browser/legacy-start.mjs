@@ -85,7 +85,36 @@ try {
   if (!armed) note('mission never became armed (map did not start)');
   if (final.scene !== 'map') note('final scene is ' + final.scene);
   if (!final.audio?.enabled || final.audio?.state !== 'running') note('audio context is not running after the start clicks');
-  const report = { ok: problems.length === 0, problems, final, dialogState };
+
+  // Old-save continuity: F5 writes the original localStorage slot; a full page
+  // reload (ROM restored from OPFS, core from OPFS) must offer CONTINUE and
+  // restore the same armed mission.
+  await page.keyboard.press('F5');
+  await page.waitForTimeout(1200);
+  const savedMessage = await page.evaluate(() => document.getElementById('message')?.textContent || '');
+  if (!/сохран|saved/i.test(savedMessage)) note('F5 did not report a save: ' + savedMessage);
+  await page.reload({ waitUntil: 'load', timeout: 60000 });
+  await page.waitForFunction(() => window.__BYOP_READY__ === true, null, { timeout: 180000, polling: 500 });
+  await page.waitForTimeout(3000);
+  const continueVisible = await page.evaluate(() => !!document.querySelector('#continue-campaign'));
+  if (!continueVisible) note('CONTINUE was not offered after a reload with a saved mission');
+  await shot('start-03-home-continue.png');
+  if (continueVisible) {
+    await page.evaluate(() => document.getElementById('continue-campaign').click());
+    await page.waitForTimeout(1200);
+    if (await page.evaluate(() => !!document.querySelector('#native-confirmation:not([hidden])'))) {
+      await page.locator('#native-confirmation .confirmation-actions button').first().click();
+    }
+    let resumed = false;
+    for (let i = 0; i < 30; i += 1) {
+      await page.waitForTimeout(1000);
+      const current = await state();
+      if (current.armed && current.scene === 'map') { resumed = true; break; }
+    }
+    if (!resumed) note('CONTINUE did not restore the armed mission');
+    await shot('start-04-resumed.png');
+  }
+  const report = { ok: problems.length === 0, problems, final, dialogState, continueVisible };
   fs.writeFileSync(path.join(OUT, 'start.json'), JSON.stringify(report, null, 2));
   console.log('final:', JSON.stringify(final));
   console.log(problems.length === 0 ? 'LEGACY-START OK' : 'LEGACY-START FAILED');

@@ -73,6 +73,8 @@ function mountBootScreen() {
     #byop-change{background:#191b1d;color:#e2e2de;border:1px solid #8b8b84}
     #byop-start-saved[hidden],#byop-change[hidden]{display:none}
     #byop-start-saved:active,#byop-change:active{border-style:inset}
+    #byop-install{padding:8px 18px;background:#191b1d;color:#e2e2de;border:1px solid #8b8b84;font:13px monospace;cursor:pointer}
+    #byop-install:active{border-style:inset}
     #byop-progress{width:min(280px,70vw);height:10px;background:#242442;border:1px solid #9393b6;overflow:hidden}
     #byop-progress[hidden]{display:none}
     #byop-fill{display:block;height:100%;width:0;background:#00b600;transition:width .2s linear}
@@ -95,6 +97,7 @@ function mountBootScreen() {
     <label id="byop-pick">ВЫБРАТЬ ROM<input id="byop-rom" type="file" accept=".gen,.bin,.md,.rom,application/octet-stream" hidden></label>
     <button id="byop-start-saved" type="button" hidden>ИГРАТЬ С СОХРАНЁННЫМ ROM</button>
     <button id="byop-change" type="button" hidden>СМЕНИТЬ ROM</button>
+    <button id="byop-install" type="button" hidden>УСТАНОВИТЬ ИГРУ</button>
     <div id="byop-progress" class="byop-indeterminate" hidden role="progressbar"><span id="byop-fill"></span></div>
     <p id="byop-hint" class="byop-small">ROM не отправляется на сервер: сборка идёт на устройстве.</p>
     <button id="byop-retry" type="button" hidden>ПОВТОРИТЬ</button>`;
@@ -110,6 +113,7 @@ function mountBootScreen() {
   ui.retry = panel.querySelector('#byop-retry');
   ui.startSaved = panel.querySelector('#byop-start-saved');
   ui.change = panel.querySelector('#byop-change');
+  ui.install = panel.querySelector('#byop-install');
 
   ui.input.addEventListener('change', () => {
     const file = ui.input.files?.[0];
@@ -123,6 +127,26 @@ function mountBootScreen() {
     ui.input.click();
   });
   ui.startSaved.addEventListener('click', () => startSavedRom());
+
+  // PWA install: the old version had an install gate; BYOP keeps the game
+  // playable immediately and only offers installation when the browser allows it.
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    if (ui.install) ui.install.hidden = false;
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    if (ui.install) ui.install.hidden = true;
+  });
+  ui.install.addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    try { await installPrompt.userChoice; } catch { /* dismissed */ }
+    installPrompt = null;
+    ui.install.hidden = true;
+  });
   ui.retry.addEventListener('click', () => {
     state.error = null;
     resetUi();
