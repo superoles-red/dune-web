@@ -552,6 +552,12 @@ async function startRom(romBytes, name, { saved = false } = {}) {
       setStatus('build', 'Собираем игру из ROM…');
       const result = await buildCore(romBytes);
       state.gameSha = result.output_sha256 || result.game_sha256;
+      // Release Pyodide and the worker as soon as the core is on disk: on an
+      // iPhone the ~100 MB recompiler heap is exactly what pushes Safari into
+      // killing the tab right after the first boot/music.
+      try { state.worker?.terminate?.(); } catch { /* ignore */ }
+      state.worker = null;
+      console.log('[byop] recompiler worker released');
       setStatus('load', 'Загружаем ядро игры…');
       state.gameBytes = await readCachedGame(state.romSha);
     }
