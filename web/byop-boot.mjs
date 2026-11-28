@@ -179,7 +179,8 @@ function mountBootScreen() {
   report.id = 'byop-report';
   report.hidden = true;
   report.innerHTML = '<textarea id="byop-report-text" readonly spellcheck="false"></textarea>' +
-    '<div class="byop-report-actions"><button type="button" id="byop-copy-report">СКОПИРОВАТЬ ОТЧЁТ</button>' +
+    '<div class="byop-report-actions"><button type="button" id="byop-force-menu">ПОКАЗАТЬ МЕНЮ</button>' +
+    '<button type="button" id="byop-copy-report">СКОПИРОВАТЬ ОТЧЁТ</button>' +
     '<button type="button" id="byop-close-report">ЗАКРЫТЬ</button></div>';
   document.body.append(report);
   const reportText = report.querySelector('#byop-report-text');
@@ -217,6 +218,16 @@ function mountBootScreen() {
   help.addEventListener('click', openReport);
   window.__BYOP_OPEN_REPORT__ = openReport;
   report.querySelector('#byop-close-report').addEventListener('click', () => { report.hidden = true; help.hidden = false; });
+  report.querySelector('#byop-force-menu').addEventListener('click', () => {
+    const ui = window.__DUNE_UI__;
+    try {
+      if (ui && ui.element) ui.element.hidden = false;
+      ui?.showHome?.();
+      if (ui && ui.element) { ui.element.hidden = false; ui.render?.(performance.now()); }
+      window.__BYOP_FORCE_MENU__ = true;
+    } catch (error) { copyStatus.textContent = 'Не удалось показать меню: ' + error.message; }
+    report.hidden = true; help.hidden = false;
+  });
   report.querySelector('#byop-copy-report').addEventListener('click', async () => {
     const text = reportText.value || reportPayload();
     reportText.value = text;
@@ -887,7 +898,10 @@ async function startRom(romBytes, name, { saved = false } = {}) {
       setTimeout(() => {
         if (!window.__DUNE_UI__) return;
         const ui = window.__DUNE_UI__;
-        const visible = [...document.querySelectorAll('button, [role="button"]')].some((element) => element.offsetWidth > 0 && element.offsetHeight > 0);
+        const visible = [...document.querySelectorAll('#scene-ui button, #scene-ui [role="button"], #byop-launch button')].some((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
+        });
         if (!visible && window.__BYOP_OPEN_REPORT__) {
           window.__BYOP_OPEN_REPORT__();
           return;

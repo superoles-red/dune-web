@@ -324,10 +324,10 @@ else (async()=>{try{
  await startup?.stylesReady();
  gameUI=new GameInterface({art,Module,storage:browserStorage(),startEngine,isReady:()=>ready,resumeAudio,saveCurrent:saveGame,loadPayload,tell,platform,audioSettings,resolvePointerKind:effectivePointerKind,cancelGesture:()=>{cancelGesture();targetMode.cancel('screen');}});
  // BYOP diagnostics/test hook only; the legacy code keeps using its own closure.
- window.__DUNE_UI__=gameUI;
+ window.__DUNE_UI__=gameUI;window.__BYOP_SHELL_STAGE__='ui';
  if(bootstrapPaused){bootstrapPaused=false;Module._dune_web_set_paused?.(0);}
- await gameUI.loadCampaign();targetConfirmView=art.decorate(targetConfirm,'PLACE');targetCancelView=art.decorate(targetCancel,'CLEAR',{back:true});art.decorate(menuButton,'MENU',{ariaLabel:'Пауза — меню игры (Start)'});const fullscreenView=art.decorate(fullscreenButton,'',{ariaLabel:'FULL SCREEN'});platform.subscribe(s=>fullscreenView.update('',{ariaLabel:s.fullscreen?'EXIT FULL SCREEN':'FULL SCREEN'}));syncFullscreenControl();actionView=art.decorate(actionButton,'REPEAT',{ariaLabel:'Повторить производство'});
- if(startup)startup.finish();else document.getElementById('launch').hidden=true;pollState();
+ window.__BYOP_SHELL_STAGE__='campaign';await gameUI.loadCampaign();window.__BYOP_SHELL_STAGE__='decorate';targetConfirmView=art.decorate(targetConfirm,'PLACE');targetCancelView=art.decorate(targetCancel,'CLEAR',{back:true});art.decorate(menuButton,'MENU',{ariaLabel:'Пауза — меню игры (Start)'});const fullscreenView=art.decorate(fullscreenButton,'',{ariaLabel:'FULL SCREEN'});platform.subscribe(s=>fullscreenView.update('',{ariaLabel:s.fullscreen?'EXIT FULL SCREEN':'FULL SCREEN'}));syncFullscreenControl();actionView=art.decorate(actionButton,'REPEAT',{ariaLabel:'Повторить производство'});
+ window.__BYOP_SHELL_STAGE__='finish';if(startup)startup.finish();else document.getElementById('launch').hidden=true;window.__BYOP_SHELL_STAGE__='finished';pollState();
  orderFeedback.load().catch(e=>console.warn('Original order feedback unavailable:',e.message));
  if(qaMode){const {installModernQA}=await import('./qa-modern.mjs');await installModernQA({Module,startEngine,loadPayload,ui:gameUI,pollState});}
-}catch(e){console.error(e);status.textContent='Не удалось подготовить интерфейс: '+e.message;startup?.fail();document.getElementById('launch').hidden=false;}})();
+}catch(e){console.error(e);window.__BYOP_SHELL_STAGE__='error:'+e.message;status.textContent='Не удалось подготовить интерфейс: '+e.message;startup?.fail();document.getElementById('launch').hidden=false;}})();

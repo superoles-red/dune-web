@@ -121,7 +121,8 @@
 <style id="game-page-hardening">
 html,body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:manipulation!important}
 *,*::before,*::after{touch-action:manipulation;-webkit-user-drag:none}
-#canvas{touch-action:none}
+#canvas{touch-action:none;position:relative;z-index:0}
+#scene-ui:not([hidden]){z-index:1000!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
 img,svg{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 </style>
 <script id="game-page-hardening-js">
@@ -215,6 +216,19 @@ img,svg{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
       byop: window.__BYOP_STATUS__ || null,
       scene: ui && ui.state ? { scene: ui.state.scene, ready: ui.state.sceneReady, inputKind: ui.state.inputKind } : null,
       ui: ui ? { view: ui.view, displayed: ui.displayed, busy: ui.busy, pending: ui.pendingScreen ? ui.pendingScreen.kind : null } : null,
+      shellStage: window.__BYOP_SHELL_STAGE__ || null,
+      dom: (function () {
+        var el = document.getElementById('scene-ui');
+        var out = { ready: window.__BYOP_READY__ === true, byopPanelHidden: !!document.getElementById('byop-launch')?.hidden, launchHidden: !!document.getElementById('launch')?.hidden };
+        if (el) {
+          var rect = el.getBoundingClientRect(); var style = getComputedStyle(el);
+          var buttons = Array.prototype.slice.call(el.querySelectorAll('button')).map(function (b) { var r = b.getBoundingClientRect(); return { id: b.id || b.textContent.trim().slice(0, 14), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth }; });
+          out.sceneUI = { hidden: el.hidden, display: style.display, visibility: style.visibility, opacity: style.opacity, zIndex: style.zIndex, rect: [Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height)], viewportButtons: buttons.filter(function (b) { return b.visible; }).length, buttons: buttons.slice(0, 6) };
+        }
+        var canvas = document.getElementById('canvas');
+        if (canvas) { var c = getComputedStyle(canvas); out.canvas = { zIndex: c.zIndex, position: c.position, display: c.display }; }
+        return out;
+      })(),
       host: host ? { instructions: host.metrics && host.metrics.instructions, frames: host.metrics && host.metrics.renderedFrames, fault: host.metrics && host.metrics.fault, stalled: host.metrics && host.metrics.stalled } : null,
       audio: host && host.audio ? (() => { try { var s = host.audio.stats(); return { enabled: s.enabled, sampleRate: s.sampleRate, contextState: s.contextState, packets: s.packets, frames: s.frames, worklet: s.worklet }; } catch (e) { return { error: String(e) }; } })() : null,
       errors: errors.slice(0, 20),
