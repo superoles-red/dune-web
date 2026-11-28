@@ -183,6 +183,13 @@ function mountBootScreen() {
     '<button type="button" id="byop-close-report">ЗАКРЫТЬ</button></div>';
   document.body.append(report);
   const reportText = report.querySelector('#byop-report-text');
+  const help = document.createElement('button');
+  help.id = 'byop-help';
+  help.type = 'button';
+  help.textContent = 'i';
+  help.setAttribute('aria-label', 'Диагностика');
+  help.style.cssText = 'position:fixed;z-index:10001;top:max(8px,env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));width:30px;height:30px;padding:0;border-radius:15px;background:#191b1dcc;color:#cfcfda;border:1px solid #8b8b84;font:bold 15px monospace;opacity:.75';
+  document.body.append(help);
   const copyStatus = document.createElement('p');
   copyStatus.className = 'byop-small';
   report.append(copyStatus);
@@ -204,9 +211,12 @@ function mountBootScreen() {
     reportText.value = reportPayload();
     copyStatus.textContent = '';
     report.hidden = false;
+    help.hidden = true;
   }
   ui.diag.addEventListener('click', openReport);
-  report.querySelector('#byop-close-report').addEventListener('click', () => { report.hidden = true; });
+  help.addEventListener('click', openReport);
+  window.__BYOP_OPEN_REPORT__ = openReport;
+  report.querySelector('#byop-close-report').addEventListener('click', () => { report.hidden = true; help.hidden = false; });
   report.querySelector('#byop-copy-report').addEventListener('click', async () => {
     const text = reportText.value || reportPayload();
     reportText.value = text;
@@ -855,6 +865,20 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     }, 45000);
     await import('./shell.js');
     clearTimeout(shellWatchdog);
+    // The old frontend always shows the HTML home screen over the native intro.
+    // On some phones the shell imports but stays in the native intro forever;
+    // route back to home once, then surface a visible report if the UI is blank.
+    const rescue = setInterval(() => {
+      const ui = window.__DUNE_UI__;
+      if (!ui) return;
+      clearInterval(rescue);
+      setTimeout(async () => {
+        if (ui.view !== 'home' && typeof ui.mainMenu === 'function') {
+          try { await ui.mainMenu({ save: false }); window.__BYOP_HOME_RESCUE__ = 'mainMenu'; console.log('[byop] home rescue: mainMenu'); }
+          catch (error) { console.warn('[byop] home rescue failed:', error.message); }
+        }
+      }, 2500);
+    }, 400);
     // The shell can import successfully and still leave a blank home screen
     // (asset/layout failure on a phone). Surface that instead of a black page.
     const health = setInterval(() => {
@@ -864,6 +888,10 @@ async function startRom(romBytes, name, { saved = false } = {}) {
         if (!window.__DUNE_UI__) return;
         const ui = window.__DUNE_UI__;
         const visible = [...document.querySelectorAll('button, [role="button"]')].some((element) => element.offsetWidth > 0 && element.offsetHeight > 0);
+        if (!visible && window.__BYOP_OPEN_REPORT__) {
+          window.__BYOP_OPEN_REPORT__();
+          return;
+        }
         if (ui.view === 'home' && !visible) {
           ui.panel.hidden = false;
           ui.pick.hidden = true;
