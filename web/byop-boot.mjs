@@ -514,12 +514,28 @@ function attachFacade(Module, host) {
 function installFetchFixture(frontendState) {
   const original = window.fetch.bind(window);
   const blob = new Blob([frontendState], { type: 'application/octet-stream' });
+  // The old site published a few ROM-derived native snapshots (credits/demo)
+  // that BYOP must not commit. They are served from the same origin by the old
+  // deployment, so credits replay can still use them when that site is online;
+  // locally/offline the fetch fails and the old frontend shows its own error.
+  const LEGACY_FIXTURE = /(^|\/)(credits\/house-[012]\.state\.bin|demo-harkonnen\.state\.bin|demo\.state\.bin)(?:[?#]|$)/;
+  const legacyFetch = async (raw, input, init) => {
+    let response = null;
+    try { response = await original(input, init); } catch (error) { if (!LEGACY_FIXTURE.test(raw)) throw error; }
+    if (response?.ok || !LEGACY_FIXTURE.test(raw)) return response;
+    try {
+      const path = raw.replace(/^\.\//, '').replace(/^\/+/, '');
+      const fallback = await original(new URL(`../dune-sega-web/${path}`, location.href).href, { cache: 'force-cache' });
+      if (fallback.ok) return fallback;
+    } catch { /* old site unavailable: keep the original 404 */ }
+    return response;
+  };
   window.fetch = (input, init) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url;
     if (typeof raw === 'string' && /(^|\/)frontend\.state\.bin(?:[?#]|$)/.test(raw)) {
       return Promise.resolve(new Response(blob, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } }));
     }
-    return original(input, init);
+    return legacyFetch(raw, input, init);
   };
 }
 
