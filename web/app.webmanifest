@@ -1,7 +1,7 @@
 {
   "id": "./",
   "name": "Dune",
-  "short_name": "Dune - The Battle for Arrakis",
+  "short_name": "Dune",
   "description": "Dune Sega USA — fan web adaptation. Local single-player game.",
   "lang": "en",
   "start_url": "./",

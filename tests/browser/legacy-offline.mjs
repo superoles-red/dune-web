@@ -34,6 +34,11 @@ try {
   const sw = await page.evaluate(async () => { const reg = await navigator.serviceWorker.ready; const keys = await caches.keys(); let entries = 0; for (const key of keys) entries += (await (await caches.open(key)).keys()).length; return { scope: reg.scope, keys, entries }; });
   console.log('sw:', JSON.stringify(sw));
   if (sw.entries < 10) note('SW cache is too small: ' + sw.entries);
+  const manifest = await page.evaluate(async () => { const response = await fetch('./app.webmanifest'); return response.json(); });
+  console.log('manifest:', JSON.stringify({ name: manifest.name, short_name: manifest.short_name, display: manifest.display, icons: (manifest.icons || []).map((icon) => icon.sizes) }));
+  if (manifest.name !== 'Dune' || manifest.short_name !== 'Dune') note('installed app name is not Dune: ' + manifest.name + ' / ' + manifest.short_name);
+  if (manifest.display !== 'standalone') note('manifest display is not standalone: ' + manifest.display);
+  if (!(manifest.icons || []).some((icon) => icon.sizes === '192x192') || !(manifest.icons || []).some((icon) => icon.sizes === '512x512')) note('manifest is missing 192/512 icons');
   await page.screenshot({ path: path.join(OUT, 'offline-01-online.png') });
   await context.setOffline(true);
   await page.reload({ waitUntil: 'load', timeout: 90000 });
