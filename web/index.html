@@ -220,6 +220,7 @@ img,svg{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
       errors: errors.slice(0, 20),
     }, null, 2);
   }
+  window.__DUNE_ERROR_REPORT__ = report;
   function panel() {
     var existing = document.getElementById('byop-error-panel');
     if (existing) return existing;

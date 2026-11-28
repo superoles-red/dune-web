@@ -82,8 +82,20 @@ function mountBootScreen() {
     @keyframes byop-progress{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
     #byop-retry{margin:0;padding:12px 24px;background:#9393b6;border:2px outset #ddd;color:#000;font:14px monospace;min-height:48px}
     #byop-retry[hidden]{display:none}
-    #byop-text.error{color:#ff9a9a}`;
+    #byop-text.error{color:#ff9a9a}
+    #byop-phase{color:#9adf9a}
+    #byop-diag{margin-top:4px;padding:7px 14px;background:#191b1d;color:#c8c8d8;border:1px solid #8b8b84;font:12px monospace}
+    #byop-report{position:fixed;inset:0;z-index:10002;background:#000f;color:#fff;display:flex;flex-direction:column;gap:10px;padding:max(16px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom));font:11px/1.4 monospace}
+    #byop-report[hidden]{display:none}
+    #byop-report textarea{flex:1;width:100%;min-height:0;background:#0b0b10;color:#e8e8f0;border:1px solid #9393b6;padding:10px;font:11px/1.35 monospace;white-space:pre;user-select:text;-webkit-user-select:text}
+    #byop-report .byop-report-actions{display:flex;gap:10px;justify-content:center}
+    #byop-report button{padding:12px 20px;background:#9393b6;color:#000;border:2px outset #ddd;font:bold 14px monospace}`;
   document.head.append(style);
+  // The legacy launch overlay sits above the canvas with its own "LOADING DUNE /
+  // PREPARING GRAPHICS" text; during the slow iPhone build it looks like the
+  // game hung. The BYOP panel owns boot progress until the shell is ready.
+  const legacyLaunch = document.getElementById('launch');
+  if (legacyLaunch) legacyLaunch.hidden = true;
 
   const panel = document.createElement('div');
   panel.id = 'byop-launch';
@@ -99,7 +111,10 @@ function mountBootScreen() {
     <button id="byop-change" type="button" hidden>СМЕНИТЬ ROM</button>
     <button id="byop-install" type="button" hidden>УСТАНОВИТЬ ИГРУ</button>
     <div id="byop-progress" class="byop-indeterminate" hidden role="progressbar"><span id="byop-fill"></span></div>
+    <p id="byop-phase" class="byop-small"></p>
+    <p id="byop-firstrun" class="byop-small" hidden>Первый запуск: игра собирается на устройстве, это может занять несколько минут. Не закрывайте вкладку.</p>
     <p id="byop-hint" class="byop-small">ROM не отправляется на сервер: сборка идёт на устройстве.</p>
+    <button id="byop-diag" type="button">ДИАГНОСТИКА / ОТЧЁТ</button>
     <button id="byop-retry" type="button" hidden>ПОВТОРИТЬ</button>`;
   document.body.append(panel);
 
@@ -111,6 +126,9 @@ function mountBootScreen() {
   ui.fill = panel.querySelector('#byop-fill');
   ui.hint = panel.querySelector('#byop-hint');
   ui.retry = panel.querySelector('#byop-retry');
+  ui.phase = panel.querySelector('#byop-phase');
+  ui.firstRun = panel.querySelector('#byop-firstrun');
+  ui.diag = panel.querySelector('#byop-diag');
   ui.startSaved = panel.querySelector('#byop-start-saved');
   ui.change = panel.querySelector('#byop-change');
   ui.install = panel.querySelector('#byop-install');
@@ -153,6 +171,54 @@ function mountBootScreen() {
     ui.input.value = '';
     ui.input.click();
   });
+
+  // Always-reachable diagnostic report: a phone user cannot open devtools or
+  // copy logs. This overlay shows selectable text and a copy button with an
+  // execCommand/select fallback for iOS.
+  const report = document.createElement('div');
+  report.id = 'byop-report';
+  report.hidden = true;
+  report.innerHTML = '<textarea id="byop-report-text" readonly spellcheck="false"></textarea>' +
+    '<div class="byop-report-actions"><button type="button" id="byop-copy-report">СКОПИРОВАТЬ ОТЧЁТ</button>' +
+    '<button type="button" id="byop-close-report">ЗАКРЫТЬ</button></div>';
+  document.body.append(report);
+  const reportText = report.querySelector('#byop-report-text');
+  const copyStatus = document.createElement('p');
+  copyStatus.className = 'byop-small';
+  report.append(copyStatus);
+  function reportPayload() {
+    const rich = typeof window.__DUNE_ERROR_REPORT__ === 'function' ? window.__DUNE_ERROR_REPORT__() : null;
+    if (rich) return rich;
+    return JSON.stringify({
+      url: location.href,
+      ua: navigator.userAgent,
+      env: { screen: [screen.width, screen.height], window: [innerWidth, innerHeight], dpr: devicePixelRatio, standalone: matchMedia('(display-mode: standalone)').matches, hidden: document.hidden },
+      byop: window.__BYOP_STATUS__ ?? null,
+      timeline: window.__BYOP_TIMELINE__ || [],
+      error: window.__BYOP_ERROR__ ?? null,
+      errors: (window.__DUNE_ERRORS__ || []).slice(0, 20),
+      ui: window.__DUNE_UI__ ? { view: window.__DUNE_UI__.view, displayed: window.__DUNE_UI__.displayed, scene: window.__DUNE_UI__.state?.scene } : null,
+    }, null, 2);
+  }
+  function openReport() {
+    reportText.value = reportPayload();
+    copyStatus.textContent = '';
+    report.hidden = false;
+  }
+  ui.diag.addEventListener('click', openReport);
+  report.querySelector('#byop-close-report').addEventListener('click', () => { report.hidden = true; });
+  report.querySelector('#byop-copy-report').addEventListener('click', async () => {
+    const text = reportText.value || reportPayload();
+    reportText.value = text;
+    let copied = false;
+    try { await navigator.clipboard.writeText(text); copied = true; } catch { /* fall back below */ }
+    if (!copied) {
+      try { reportText.focus(); reportText.select(); copied = document.execCommand('copy'); } catch { copied = false; }
+    }
+    copyStatus.textContent = copied ? 'Отчёт скопирован.' : 'Текст выделен — нажмите «Копировать» в меню iOS (или сделайте скриншот).';
+  });
+  // ?diag=1 opens the report immediately (also works on a phone).
+  if (new URLSearchParams(location.search).has('diag')) setTimeout(openReport, 800);
 }
 
 function resetUi() {
@@ -167,11 +233,22 @@ function resetUi() {
   setStatus('idle');
 }
 
+let bootStartedAt = performance.now();
 function setStatus(phase, detail = '') {
   state.phase = phase;
   window.__BYOP_STATUS__ = { phase, detail };
   const text = detail || PHASE_LABELS[phase] || '';
   if (text) ui.text.textContent = text;
+  if (ui.phase && ui.phase.textContent !== text) ui.phase.textContent = text;
+  if (ui.firstRun) ui.firstRun.hidden = !['build', 'pyodide', 'unpack', 'fast-forward'].includes(phase);
+  window.__BYOP_TIMELINE__ = window.__BYOP_TIMELINE__ || [];
+  const now = Math.round(performance.now());
+  const last = window.__BYOP_TIMELINE__[window.__BYOP_TIMELINE__.length - 1];
+  if (!last || last.phase !== phase || last.detail !== text) window.__BYOP_TIMELINE__.push({ at: now, phase, detail: text });
+  if (ui.phase && phase !== 'error' && bootStartedAt) {
+    const seconds = Math.round((performance.now() - bootStartedAt) / 1000);
+    if (seconds >= 8) ui.phase.textContent = `${text} · ${seconds} с`;
+  }
 }
 
 function setProgress(fraction) {
@@ -217,14 +294,15 @@ async function readCachedGame(romSha) {
 
 /** Legacy `frontend.state.bin` generated on this device for this exact core. */
 async function readCachedFrontendState(romSha, gameSha) {
+  const key = `frontend-${romSha.slice(0, 16)}-${gameSha.slice(0, 16)}.bin`;
   try {
     const dir = await cacheDir('legacy', { create: false });
-    const file = await (await dir.getFileHandle(`frontend-${romSha.slice(0, 16)}-${gameSha.slice(0, 16)}.bin`)).getFile();
+    const file = await (await dir.getFileHandle(key)).getFile();
     const bytes = new Uint8Array(await file.arrayBuffer());
-    return bytes.length >= IGN_SAVE_BYTES ? bytes : null;
-  } catch {
-    return null;
-  }
+    if (bytes.length >= IGN_SAVE_BYTES) return bytes;
+  } catch { /* fall through to IndexedDB */ }
+  const bytes = await idbGet(`fixture-${key}`);
+  return bytes && bytes.length >= IGN_SAVE_BYTES ? bytes : null;
 }
 
 async function writeCachedFrontendState(romSha, gameSha, bytes) {
@@ -235,8 +313,9 @@ async function writeCachedFrontendState(romSha, gameSha, bytes) {
     await writable.write(bytes);
     await writable.close();
   } catch (error) {
-    console.warn('[byop] cannot cache the generated frontend state:', error.message);
+    console.warn('[byop] cannot cache the generated frontend state in OPFS:', error.message);
   }
+  await idbPut(`fixture-frontend-${romSha.slice(0, 16)}-${gameSha.slice(0, 16)}.bin`, bytes);
 }
 
 /* ---------------------------------------------- IndexedDB fallback cache -- */
@@ -354,8 +433,9 @@ function ensureWorker() {
   worker.addEventListener('message', (event) => {
     const message = event.data;
     if (message.type === 'state') {
-      if (message.label) setStatus(message.phase, message.label);
-      else setStatus(message.phase);
+      const label = message.label || PHASE_LABELS[message.phase] || '';
+      const percent = Number.isFinite(message.fraction) ? ` ${Math.round(message.fraction * 100)}%` : '';
+      setStatus(message.phase, label ? `${label}${percent}` : '');
       if (Number.isFinite(message.fraction)) setProgress(message.fraction);
     } else if (message.type === 'log') {
       console.log('[recompiler]', message.line);
@@ -418,12 +498,7 @@ async function prepareFrontendState(host, romSha, gameSha) {
   // synchronous task, and the first launch (no cached fixture yet) used to do
   // all ~26M instructions in one go. Yielding keeps the boot screen alive.
   const chunk = 1_000_000;
-  for (let done = 0; done < FAST_FORWARD_INSTRUCTIONS; done += chunk) {
-    host.advanceInstructions(chunk, { maxSteps: 300_000_000 });
-    const percent = Math.min(99, Math.round(((done + chunk) / FAST_FORWARD_INSTRUCTIONS) * 100));
-    setStatus('fast-forward', `Прокручиваем оригинальное интро… ${percent}%`);
-    if (done % (chunk * 4) === 0) await new Promise((resolve) => setTimeout(resolve, 0));
-  }
+  let advanced = 0;
   const readCampaign = () => {
     const pointer = host.exports.dune_web_campaign_json();
     const bytes = new Uint8Array(host.memory.buffer, pointer);
@@ -431,6 +506,18 @@ async function prepareFrontendState(host, romSha, gameSha) {
     while (end < bytes.length && bytes[end]) end += 1;
     return JSON.parse(new TextDecoder().decode(bytes.subarray(0, end)));
   };
+  for (let done = 0; done < FAST_FORWARD_INSTRUCTIONS; done += chunk) {
+    host.advanceInstructions(chunk, { maxSteps: 300_000_000 });
+    advanced = done + chunk;
+    const percent = Math.min(99, Math.round((advanced / FAST_FORWARD_INSTRUCTIONS) * 100));
+    setStatus('fast-forward', `Прокручиваем оригинальное интро… ${percent}%`);
+    // Yield after every chunk so the progress line repaints on a slow phone.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Stop as soon as the native main menu is actually ready instead of always
+    // running the full 26M instructions (roughly halves the iPhone first boot).
+    if (done >= chunk && (done + chunk) % (chunk * 2) === 0) { const probe = readCampaign(); if (probe.scene === 'main' && probe.sceneReady === true) break; }
+  }
+  window.__BYOP_FAST_FORWARDED__ = advanced;
   const campaign = readCampaign();
   if (campaign.scene !== 'main' || campaign.sceneReady !== true) {
     throw new Error(`интро не дошло до главного меню (scene=${campaign.scene})`);

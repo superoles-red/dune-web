@@ -60,10 +60,29 @@ EMSCRIPTEN_KEEPALIVE int dune_rt_set_audio_mode(int mode) {
     return 1;
 }
 
+/* The old SDL presentation path applied dune_audio_scale() to every output
+   sample (default DUNE_VOLUME=100 -> x4, with a soft knee above 24000).  Path A
+   drains the ring itself, so without this the game was exactly 12 dB quieter
+   than the old web build.  Keep the same gain curve here. */
+static int16_t dune_rt_audio_gain(int16_t sample) {
+    int32_t value = (int32_t)sample * 4;
+    int negative = value < 0;
+    if (negative) value = -value;
+    if (value > 24000) {
+        int32_t excess = value - 24000;
+        value = 24000 + (int32_t)((int64_t)excess * 8767 / (excess + 8767));
+    }
+    if (value > 32767) value = 32767;
+    return (int16_t)(negative ? -value : value);
+}
+
 /* Drain up to ``frames`` interleaved stereo i16 frames into ``out``.
    Returns the number of frames written (0 when the ring is empty). */
 EMSCRIPTEN_KEEPALIVE unsigned dune_rt_audio_pop(uint32_t out, unsigned frames) {
-    return audio_pop(&em_cpu, (int16_t *)(uintptr_t)out, frames);
+    unsigned count = audio_pop(&em_cpu, (int16_t *)(uintptr_t)out, frames);
+    int16_t *samples = (int16_t *)(uintptr_t)out;
+    for (unsigned i = 0; i < count * 2; ++i) samples[i] = dune_rt_audio_gain(samples[i]);
+    return count;
 }
 
 /* 48 000 stereo frames/s, ring capacity 4096 frames and the current fill. */
