@@ -159,6 +159,25 @@
   .lang { margin-left: auto; border: 1px solid #4a3820; background: rgba(30,22,12,.8); color: #e8d8b8;
           border-radius: 10px; padding: 4px 10px; font: 700 12px/1 inherit; letter-spacing: .08em; }
   .lang:active { background: rgba(240,200,112,.3); }
+
+  /* --- fatal error screen (must cover a black canvas, never leave it blank) --- */
+  #screen-error.fatal {
+    position: fixed; inset: 0; z-index: 50; width: 100%; max-width: none; border-radius: 0;
+    overflow-y: auto; justify-content: center; gap: 12px;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+    background: radial-gradient(120% 80% at 50% 0%, #1d1509 0%, var(--bg) 70%);
+  }
+  #error-details { width: 100%; max-height: 170px; overflow: auto; text-align: left; margin: 0;
+                   white-space: pre-wrap; overflow-wrap: anywhere; background: #140e08;
+                   border: 1px solid var(--line); border-radius: 12px; padding: 10px;
+                   font: 11px/1.4 ui-monospace, monospace; color: var(--muted); }
+  #error-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  #error-copy-status { color: var(--ok); font-size: 12px; min-height: 16px; margin: 0; }
+  body.fatal-error main > section:not(#screen-error) { display: none !important; }
+  body.fatal-error .sheet { display: none !important; }
+  #nosw-banner { position: fixed; left: 0; right: 0; top: 0; z-index: 60; background: #6a3530; color: #fff;
+                 padding: max(8px, env(safe-area-inset-top)) 14px 8px; font-size: 12px; text-align: center; }
+  #nosw-banner a { color: #ffd873; }
   .help h3 { margin: 14px 0 4px; font-size: 13px; color: #caa54a; letter-spacing: .06em; text-transform: uppercase; }
   .help p { margin: 0 0 8px; font-size: 14px; line-height: 1.45; color: #e6d7bb; }
   footer { color: #6d5c43; font-size: 11px; text-align: center; padding: 6px 0 0; }
@@ -166,8 +185,332 @@
 
   @media (max-width: 420px) { .title { font-size: 19px; } .card { padding: 20px 16px; } }
 </style>
+<script>
+/* DUNE BYOP shell bootstrap.
+ *
+ * Runs before app.mjs and stays useful even when app.mjs fails to load, so a
+ * broken/stale shell shows a readable error screen instead of a black canvas.
+ *
+ * Keep BUILD in sync with VERSION in ./sw.js and APP_BUILD in ./app.mjs.
+ */
+(function () {
+  'use strict';
+
+  var BUILD = 'dune-byop-v3';
+  var REPAIR_KEY = 'dune-shell-repair';
+  var NOSW_KEY = 'dune-nosw-reload';
+  var errors = (window.__DUNE_ERRORS__ = window.__DUNE_ERRORS__ || []);
+  var params = new URLSearchParams(location.search);
+  var noSw = params.get('nosw') === '1';
+  var repairing = false;
+  var fatalShown = false;
+
+  window.__DUNE_SHELL_BUILD__ = BUILD;
+  window.__DUNE_NO_SW__ = noSw;
+
+  function $(id) { return document.getElementById(id); }
+
+  function whenBodyReady(fn) {
+    if (document.body) { fn(); return; }
+    document.addEventListener('DOMContentLoaded', fn, { once: true });
+  }
+
+  function pushError(kind, message, detail) {
+    var entry = {
+      at: new Date().toISOString(),
+      kind: kind,
+      message: String(message == null ? '' : message).slice(0, 2000),
+      detail: detail ? String(detail).slice(0, 4000) : '',
+    };
+    errors.push(entry);
+    if (errors.length > 60) errors.shift();
+    try { console.error('[dune] ' + kind + ': ' + entry.message); } catch (e) { /* logging only */ }
+    return entry;
+  }
+  window.__DUNE_RECORD_ERROR__ = pushError;
+
+  /* ---------------------------------------------------- cache self-repair -- */
+
+  function purgeShell() {
+    var tasks = [];
+    try {
+      if ('serviceWorker' in navigator) {
+        tasks.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (reg) { return reg.unregister(); }));
+        }).catch(function () { /* no registrations */ }));
+      }
+    } catch (e) { /* service workers unavailable */ }
+    try {
+      if (window.caches && caches.keys) {
+        tasks.push(caches.keys().then(function (keys) {
+          return Promise.all(keys.map(function (key) { return caches.delete(key); }));
+        }).catch(function () { /* no caches */ }));
+      }
+    } catch (e) { /* caches unavailable */ }
+    return Promise.all(tasks);
+  }
+  window.__dunePurgeShell = purgeShell;
+
+  function reloadClean() {
+    return purgeShell().then(function () { location.reload(); }, function () { location.reload(); });
+  }
+  window.__duneReloadClean = reloadClean;
+
+  function readRepairs() {
+    try { return JSON.parse(sessionStorage.getItem(REPAIR_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function writeRepairs(value) {
+    try { sessionStorage.setItem(REPAIR_KEY, JSON.stringify(value)); } catch (e) { /* private mode */ }
+  }
+  function canAutoRepair() {
+    var state = readRepairs();
+    return !state.at || (Date.now() - state.at > 120000);
+  }
+  function noteRepair(reason) {
+    var state = readRepairs();
+    state.count = (state.count || 0) + 1;
+    state.at = Date.now();
+    state.reason = String(reason || '').slice(0, 300);
+    writeRepairs(state);
+  }
+
+  /* A stale service worker (from an older deploy) can serve old modules while
+   * index.html comes fresh from the network.  The controller must answer with
+   * the same BUILD as this page; otherwise drop the SW + caches and reload. */
+  function selfHeal(reason) {
+    if (noSw || repairing) return false;
+    pushError('self-heal', reason || 'stale shell cache');
+    if (!canAutoRepair()) {
+      showFatal(
+        'Оболочка сайта устарела и не обновилась автоматически.',
+        'Причина: ' + reason + '\nНажмите «Перезагрузить без кэша»: Service Worker будет снят, а кэш удалён.',
+        { kind: 'self-heal-failed', force: true, title: 'Нужна перезагрузка без кэша' },
+      );
+      return false;
+    }
+    repairing = true;
+    noteRepair(reason);
+    purgeShell().then(function () { location.reload(); }, function () { location.reload(); });
+    return true;
+  }
+  window.__duneSelfHeal = selfHeal;
+
+  function pingController() {
+    return new Promise(function (resolve) {
+      var sw = navigator.serviceWorker;
+      if (!sw || !sw.controller) { resolve(null); return; }
+      var channel = new MessageChannel();
+      var timer = setTimeout(function () { resolve(null); }, 1500);
+      channel.port1.onmessage = function (event) { clearTimeout(timer); resolve(event.data || null); };
+      try { sw.controller.postMessage({ type: 'DUNE_PING' }, [channel.port2]); }
+      catch (e) { clearTimeout(timer); resolve(null); }
+    });
+  }
+
+  function checkControllerVersion() {
+    if (noSw || !('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+    pingController().then(function (reply) {
+      if (!reply || reply.version !== BUILD) {
+        selfHeal('Service Worker "' + (reply && reply.version ? reply.version : 'unknown') + '" != shell "' + BUILD + '"');
+      }
+    });
+  }
+
+  function checkAppBuild() {
+    if (noSw) return;
+    if (window.__DUNE_APP_BUILD__ !== BUILD) {
+      selfHeal('app "' + String(window.__DUNE_APP_BUILD__) + '" != shell "' + BUILD + '"');
+    }
+  }
+
+  /* ------------------------------------------------ visible error screen -- */
+
+  function showFatal(message, detail, options) {
+    var opts = options || {};
+    pushError(opts.kind || 'fatal', message, detail);
+    if (fatalShown && !opts.force) return;
+    fatalShown = true;
+    whenBodyReady(function () {
+      var screen = $('screen-error');
+      if (!screen) return;
+      var sections = document.querySelectorAll('main > section');
+      for (var i = 0; i < sections.length; i += 1) {
+        if (sections[i] !== screen) sections[i].classList.add('hidden');
+      }
+      screen.classList.remove('hidden');
+      screen.classList.add('fatal');
+      document.body.classList.add('fatal-error');
+      if (opts.title) {
+        var title = $('error-title');
+        if (title) title.textContent = opts.title;
+      }
+      var text = $('error-text');
+      if (text) text.textContent = message || 'Что-то пошло не так.';
+      var retry = $('error-retry');
+      if (retry) retry.hidden = !window.__DUNE_APP_BUILD__;
+      var box = $('error-details');
+      if (box && detail) {
+        box.textContent = String(detail);
+        box.hidden = false;
+      }
+    });
+  }
+  window.__DUNE_SHOW_FATAL__ = showFatal;
+
+  function fallbackCopy(text) {
+    try {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', 'readonly');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    } catch (e) { /* clipboard unavailable */ }
+  }
+
+  function collectReport() {
+    var diagnostics = null;
+    try { diagnostics = window.__DUNE_DIAGNOSTICS__ ? window.__DUNE_DIAGNOSTICS__() : null; }
+    catch (e) { diagnostics = { error: String(e) }; }
+    var registrations = [];
+    var cacheKeys = [];
+    var jobs = [
+      (window.caches && caches.keys)
+        ? caches.keys().then(function (keys) { cacheKeys = keys; }).catch(function () { /* none */ })
+        : Promise.resolve(),
+    ];
+    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function (list) {
+        registrations = list.map(function (reg) {
+          return { scope: reg.scope, active: !!reg.active, waiting: !!reg.waiting, installing: !!reg.installing };
+        });
+      }).catch(function () { /* none */ }));
+    }
+    return Promise.all(jobs).then(function () {
+      var controller = ('serviceWorker' in navigator && navigator.serviceWorker.controller)
+        ? navigator.serviceWorker.controller.scriptURL
+        : null;
+      return {
+        generatedAt: new Date().toISOString(),
+        url: location.href,
+        build: { shell: BUILD, app: window.__DUNE_APP_BUILD__ || null, controller: controller },
+        userAgent: navigator.userAgent,
+        platform: navigator.platform || '',
+        language: navigator.language,
+        crossOriginIsolated: !!window.crossOriginIsolated,
+        serviceWorker: { supported: 'serviceWorker' in navigator, controller: controller, registrations: registrations },
+        caches: cacheKeys,
+        repairAttempts: readRepairs(),
+        errors: errors.slice(-60),
+        diagnostics: diagnostics,
+        buildResults: window.__BUILD_RESULTS__ || [],
+        buildErrors: window.__BUILD_ERRORS__ || [],
+      };
+    });
+  }
+  window.__duneCollectReport = collectReport;
+
+  function copyReport() {
+    var status = $('error-copy-status');
+    if (status) status.textContent = 'Собираем отчёт…';
+    return collectReport().then(function (report) {
+      var text = JSON.stringify(report, null, 2);
+      var done = function () { if (status) status.textContent = 'Отчёт скопирован в буфер обмена.'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+      }
+      fallbackCopy(text);
+      done();
+      return undefined;
+    }).catch(function (error) {
+      if (status) status.textContent = 'Не удалось собрать отчёт: ' + error;
+    });
+  }
+  window.__duneCopyReport = copyReport;
+
+  /* ----------------------------------------------------------- listeners -- */
+
+  window.addEventListener('error', function (event) {
+    var target = event.target;
+    if (target && target !== window && target.tagName) {
+      if (target.tagName === 'SCRIPT') {
+        pushError('module-load', 'failed to load ' + (target.src || 'module'),
+          'src=' + (target.src || '') + '\nreadyState=' + document.readyState);
+        if (!window.__DUNE_APP_BUILD__) {
+          selfHeal('app module failed to load: ' + (target.src || ''));
+        }
+        return;
+      }
+      pushError('resource', (target.tagName || 'resource') + ' failed: ' + (target.src || target.href || ''));
+      return;
+    }
+    var message = event.message || (event.error && event.error.message) || 'Неизвестная ошибка';
+    var detail = event.error && event.error.stack
+      ? event.error.stack
+      : (event.filename ? event.filename + ':' + event.lineno + ':' + event.colno : '');
+    showFatal(message, detail, { kind: 'uncaught', title: 'Игра не запустилась' });
+  }, true);
+
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event.reason;
+    var message = (reason && reason.message) || String(reason || 'Необработанный сбой');
+    var detail = reason && reason.stack ? reason.stack : '';
+    showFatal(message, detail, { kind: 'unhandledrejection', title: 'Игра не запустилась' });
+  });
+
+  whenBodyReady(function () {
+    var nosw = $('nosw-banner');
+    if (noSw && nosw) nosw.hidden = false;
+    // When app.mjs is running it owns these two buttons (it can add richer
+    // diagnostics); only fall back to the bootstrap wiring if it failed.
+    if (window.__DUNE_APP_BUILD__ === BUILD) return;
+    var reload = $('error-reload-clean');
+    if (reload) {
+      reload.addEventListener('click', function () {
+        reload.disabled = true;
+        var status = $('error-copy-status');
+        if (status) status.textContent = 'Снимаем Service Worker, удаляем кэш и перезагружаем…';
+        reloadClean();
+      });
+    }
+    var copy = $('error-copy');
+    if (copy) copy.addEventListener('click', function () { copyReport(); });
+  });
+
+  window.addEventListener('load', function () {
+    setTimeout(checkAppBuild, 900);
+  });
+  // Safety net: if the document finished but app.mjs never ran (e.g. a module
+  // request died), surface the error even when the load event was skipped.
+  setTimeout(function () {
+    if (document.readyState === 'complete') checkAppBuild();
+  }, 3200);
+
+  if (noSw) {
+    /* Emergency mode: drop the service worker and every cache, then reload once
+     * unprotected so the page is built from network bytes only. */
+    var marker = 0;
+    try { marker = Number(sessionStorage.getItem(NOSW_KEY) || 0); } catch (e) { marker = 0; }
+    var wasControlled = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+    purgeShell().then(function () {
+      if (wasControlled && Date.now() - marker > 10000) {
+        try { sessionStorage.setItem(NOSW_KEY, String(Date.now())); } catch (e) { /* private mode */ }
+        location.reload();
+      }
+    });
+  } else {
+    // A controller left over from an older deploy answers with an older VERSION
+    // (or not at all): repair before the player can hit a stale shell.
+    setTimeout(checkControllerVersion, 250);
+  }
+})();
+</script>
 </head>
 <body>
+<div id="nosw-banner" hidden>Аварийный режим: Service Worker и кэш отключены — страница загружена с сервера. <a href="./">Вернуться в обычный режим</a></div>
 <main>
   <header>
     <div class="logo">Dune</div>
@@ -232,7 +575,14 @@
     </div>
     <h1 class="title" id="error-title">Не получилось</h1>
     <p class="hint" id="error-text">Что-то пошло не так.</p>
-    <button class="btn" id="error-retry">Попробовать другой ROM</button>
+    <pre id="error-details" hidden></pre>
+    <div id="error-actions">
+      <button class="btn" id="error-retry">Попробовать другой ROM</button>
+      <button class="btn ghost" id="error-reload-clean">Перезагрузить без кэша</button>
+      <button class="btn ghost" id="error-copy">Скопировать отчёт</button>
+      <a class="btn ghost small" id="error-nosw" href="?nosw=1">Открыть в аварийном режиме (без Service Worker)</a>
+      <p id="error-copy-status" class="hint"></p>
+    </div>
   </section>
 
   <!-- 4. Playing -->

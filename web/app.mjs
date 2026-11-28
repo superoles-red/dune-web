@@ -3,6 +3,12 @@
 
 import { initLanguage, setLanguage, nextLanguage, languageLabel, t, translateDom } from './i18n.mjs';
 
+// Keep in sync with BUILD in ./index.html and VERSION in ./sw.js. index.html
+// compares this marker with its own build id: a mismatch means an old cached
+// app.mjs was served next to a fresh index.html, and the page self-repairs.
+const APP_BUILD = 'dune-byop-v3';
+window.__DUNE_APP_BUILD__ = APP_BUILD;
+
 const $ = (id) => document.getElementById(id);
 
 initLanguage();
@@ -47,6 +53,51 @@ const state = {
 };
 
 const KNOWN_ROM_SHA256 = 'b1bbe73186e0902fa8b2db0f227bf306e3d6a80fe592f927d1aa9d60c0f335ba';
+
+// ---------- diagnostics ----------
+// Everything the error screen / copied report needs to explain a failed launch.
+// Function declarations below are hoisted, so this provider is usable before
+// the rest of the module has run.
+function safeCall(fn) {
+  try { return fn(); } catch (error) { return { error: String(error && error.stack ? error.stack : error) }; }
+}
+
+function hostDiagnostics() {
+  const host = state.host;
+  if (!host) return null;
+  return {
+    metrics: host.metrics ?? null,
+    fault: host.fault ?? null,
+    snapshot: safeCall(() => host.snapshot?.() ?? null),
+    campaignJson: safeCall(() => campaignJson()),
+    exports: host.exports ? Object.keys(host.exports).sort() : [],
+    capabilities: safeCall(() => host.capabilities?.() ?? null),
+    frame: safeCall(() => host.frameStats?.() ?? null),
+    audio: safeCall(() => host.audio?.stats?.() ?? null),
+    input: window.__DUNE_INPUT ?? null,
+    canvas: (() => {
+      const canvas = $('game-canvas');
+      return canvas ? { width: canvas.width, height: canvas.height } : null;
+    })(),
+  };
+}
+
+function logHostState(label) {
+  const detail = hostDiagnostics();
+  log(`${label}: ${JSON.stringify(detail).slice(0, 3000)}`);
+  return detail;
+}
+
+window.__DUNE_DIAGNOSTICS__ = () => ({
+  generatedAt: new Date().toISOString(),
+  appBuild: APP_BUILD,
+  shellBuild: window.__DUNE_SHELL_BUILD__ ?? null,
+  romSha256: state.romSha,
+  host: hostDiagnostics(),
+  log: state.log.slice(-120),
+  buildResults: window.__BUILD_RESULTS__ ?? [],
+  buildErrors: window.__BUILD_ERRORS__ ?? [],
+});
 
 // ---------- helpers ----------
 function screen(name) {
@@ -210,9 +261,18 @@ function onResult(result) {
   screen('ready');
 }
 
-function showError(text) {
+function showError(text, detail, options = {}) {
   state.building = false;
+  const title = $('error-title');
+  if (title) title.textContent = options.title || t('Не получилось');
   $('error-text').textContent = text;
+  const box = $('error-details');
+  if (box) {
+    box.textContent = detail ? String(detail) : '';
+    box.hidden = !detail;
+  }
+  const status = $('error-copy-status');
+  if (status) status.textContent = '';
   screen('error');
   log(`Ошибка: ${text}`);
 }
@@ -221,6 +281,15 @@ $('error-retry').addEventListener('click', () => {
   screen('setup');
   romInput.value = '';
   romInput.click();
+});
+
+$('error-reload-clean')?.addEventListener('click', () => {
+  if (window.__duneReloadClean) window.__duneReloadClean();
+  else location.reload();
+});
+
+$('error-copy')?.addEventListener('click', () => {
+  if (window.__duneCopyReport) window.__duneCopyReport();
 });
 
 $('rebuild').addEventListener('click', () => startBuild(true));
@@ -369,13 +438,17 @@ async function startPlay({ resume = false } = {}) {
     // Keep the screen awake during play where the API exists.
     try { await navigator.wakeLock?.request?.('screen'); } catch { /* optional */ }
   } catch (error) {
+    const detail = logHostState('Диагностика запуска');
+    const message = error && error.message ? error.message : String(error);
+    window.__DUNE_RECORD_ERROR__?.('play-failed', message, error && error.stack ? error.stack : '');
     state.host = null;
-    gameLoading(true, t('Не удалось запустить игру'));
+    gameLoading(false);
     log(`Ошибка запуска: ${error && error.stack ? error.stack : error}`);
-    setTimeout(() => {
-      screen('ready');
-      $('ready-hint').textContent = t('Запуск не удался на этом устройстве — подробности в «Подробностях».');
-    }, 1500);
+    showError(
+      `${t('Не удалось запустить игру на этом устройстве.')} ${message}`,
+      `${error && error.stack ? `${error.stack}\n\n` : ''}${JSON.stringify(detail, null, 2)}`,
+      { title: t('Игра не запустилась') },
+    );
   }
 }
 
@@ -730,15 +803,22 @@ function downloadText(filename, text) {
 function downloadReport() {
   const report = {
     generatedAt: new Date().toISOString(),
+    build: { app: APP_BUILD, shell: window.__DUNE_SHELL_BUILD__ ?? null },
     userAgent: navigator.userAgent,
     platform: navigator.platform || '',
     deviceMemory: navigator.deviceMemory ?? null,
     hardwareConcurrency: navigator.hardwareConcurrency ?? null,
     crossOriginIsolated: self.crossOriginIsolated,
+    serviceWorker: safeCall(() => ({
+      supported: 'serviceWorker' in navigator,
+      controller: navigator.serviceWorker?.controller?.scriptURL ?? null,
+    })),
     reference: state.reference,
     romSha256: state.romSha,
-    results: window.__BUILD_RESULTS ?? [],
-    errors: window.__BUILD_ERRORS ?? [],
+    results: window.__BUILD_RESULTS__ ?? [],
+    errors: window.__BUILD_ERRORS__ ?? [],
+    uncaughtErrors: window.__DUNE_ERRORS__ ?? [],
+    diagnostics: safeCall(() => window.__DUNE_DIAGNOSTICS__?.() ?? null),
     lines: state.log,
   };
   downloadText('dune-report.json', JSON.stringify(report, null, 2) + '\n');
@@ -856,10 +936,16 @@ $('install-app')?.addEventListener('click', async () => {
 // Offline: cache the wrapper/runtime/pyodide after the first visit. The ROM is
 // read from a local File and the generated game.wasm lives in OPFS, so the
 // second visit (even offline) only needs the cached shell.
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+// `?nosw=1` is the emergency mode: never register while it is requested.
+if (window.__DUNE_NO_SW__ || new URLSearchParams(location.search).get('nosw') === '1') {
+  log('Аварийный режим: Service Worker не регистрируется (?nosw=1)');
+} else if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
   navigator.serviceWorker.register('./sw.js', { scope: './' }).then((registration) => {
     log('Офлайн-режим готов: оболочка и рантайм кэшируются');
     registration.update?.().catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      log('Оболочка обновлена Service Worker');
+    });
   }).catch((error) => log(`Офлайн-режим недоступен: ${error.message}`));
 }
 
