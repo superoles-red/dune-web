@@ -4,9 +4,9 @@
 // game ROM baked in.  This boot screen replaces that engine:
 //
 //   1. the player picks a ROM (never leaves the browser);
-//   2. `../recompiler.worker.js` (the BYOP recompiler that already ships with
+//   2. `./recompiler.worker.js` (the BYOP recompiler that already ships with
 //      dune-web) turns that ROM into `game.wasm` inside a Web Worker (Pyodide);
-//   3. `DuneHost` (../host/host.mjs) loads our `runtime.wasm` + the generated
+//   3. `DuneHost` (./host/host.mjs) loads our `runtime.wasm` + the generated
 //      `game.wasm` and boots the original game on the runtime;
 //   4. the machine is fast-forwarded to the original main menu, and that exact
 //      DSAV snapshot is kept as the legacy `frontend.state.bin` fixture
@@ -17,7 +17,7 @@
 // Nothing here contains game data: the ROM, `game.wasm` and the generated state
 // live in the player's browser only.
 
-import { DuneHost } from '../host/host.mjs';
+import { DuneHost } from './host/host.mjs';
 
 const KNOWN_ROM_SHA256 = 'b1bbe73186e0902fa8b2db0f227bf306e3d6a80fe592f927d1aa9d60c0f335ba';
 const ROM_BYTES = 1048576;
