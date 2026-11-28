@@ -88,6 +88,6 @@
   "memory_pages": 1024,
   "pointer_bits": 32,
   "rom_bytes": 1048576,
-  "runtime_bytes": 898726,
-  "runtime_sha256": "94b5f8a4d84d2358d1c06a2807e9de4a9f3c823b110d3f338a6e6bb56d4d3c68"
+  "runtime_bytes": 898852,
+  "runtime_sha256": "116e791a784d6dc2d6580ae0fc62d7c4a41381a3dbec2260522731bf0d50196c"
 }

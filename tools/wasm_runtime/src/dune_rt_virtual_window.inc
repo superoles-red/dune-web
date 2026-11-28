@@ -233,6 +233,16 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
     DuneLayout layout = dune_view_host_layout(&em_host, &em_cpu, w, h);
     if (!layout.world_width || !layout.world_height) return NULL;
     DuneView *view = &em_host.dune_view;
+    /* The SDL presentation path (dune_view_draw) publishes the native cursor
+       state before building the view.  Path A called dune_view_build directly,
+       so the engine always rendered its default square cursor.  Replicate the
+       SDL setup: the ordinary map cursor is hidden, only the carried-building
+       placement preview may show it. */
+    if (dune_view_map(&em_cpu)) dune_view_pointer(&em_host, &em_cpu);
+    view->cursor_hidden = !em_web_cursor_preview(&em_cpu);
+    view->cursor_valid = em_host.dune_mouse.point_world;
+    view->cursor_x = em_host.dune_mouse.wx;
+    view->cursor_y = em_host.dune_mouse.wy;
     if (!dune_view_build(view, &em_cpu, &layout)) return NULL;
     if (!view->pixels || !view->ui || !view->width || !view->height) return NULL;
     size_t bytes = (size_t)w * (size_t)h * 4u;
