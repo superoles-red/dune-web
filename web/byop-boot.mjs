@@ -239,6 +239,45 @@ async function writeCachedFrontendState(romSha, gameSha, bytes) {
   }
 }
 
+/* ---------------------------------------------- IndexedDB fallback cache -- */
+// WebKit/iOS can expose OPFS but fail every write with UnknownError. IndexedDB
+// is a second, widely available cache so those devices do not rebuild forever.
+
+const IDB_NAME = 'dune-byop-cache';
+const IDB_STORE = 'blobs';
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(IDB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(IDB_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idbGet(key) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+      request.onsuccess = () => resolve(request.result ? new Uint8Array(request.result) : null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch { return null; }
+}
+
+async function idbPut(key, bytes) {
+  try {
+    const db = await idbOpen();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(bytes, key);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch { /* cache is best effort */ }
+}
+
 /* -------------------------------------------------------- saved ROM ----- */
 
 /** Remember the validated ROM in OPFS so a reload does not ask for the file.
@@ -256,7 +295,9 @@ async function saveRomInput(romBytes, name) {
     await metaWriter.write(new TextEncoder().encode(JSON.stringify({ name: name || 'Dune (USA).gen', sha256: KNOWN_ROM_SHA256, savedAt: Date.now() })));
     await metaWriter.close();
   } catch (error) {
-    console.warn('[byop] cannot remember the ROM on this device:', error.message);
+    console.warn('[byop] cannot remember the ROM in OPFS, using IndexedDB:', error.message);
+    await idbPut('rom', romBytes);
+    try { localStorage.setItem('dune-byop-rom-name', name || 'Dune (USA).gen'); } catch { /* ignore */ }
   }
 }
 
@@ -275,7 +316,13 @@ async function readSavedRom() {
     if (digest !== KNOWN_ROM_SHA256) return null;
     return { bytes, name };
   } catch {
-    return null;
+    const bytes = await idbGet('rom');
+    if (!bytes || bytes.length !== ROM_BYTES) return null;
+    const digest = await sha256Hex(bytes);
+    if (digest !== KNOWN_ROM_SHA256) return null;
+    let name = 'Dune (USA).gen';
+    try { name = localStorage.getItem('dune-byop-rom-name') || name; } catch { /* ignore */ }
+    return { bytes, name };
   }
 }
 
@@ -546,7 +593,15 @@ async function startRom(romBytes, name, { saved = false } = {}) {
         state.gameSha = await sha256Hex(cached);
         setStatus('cache_read', 'Игра уже собрана — запускаем из памяти устройства');
       }
-    } catch { /* no cache yet */ }
+    } catch { /* no OPFS cache yet */ }
+    if (!state.gameBytes) {
+      const idbCore = await idbGet(`core-${state.romSha}`);
+      if (idbCore && idbCore.length > 1024) {
+        state.gameBytes = idbCore;
+        state.gameSha = await sha256Hex(idbCore);
+        setStatus('cache_read', 'Игра уже собрана — запускаем из памяти устройства');
+      }
+    }
 
     if (!state.gameBytes) {
       setStatus('build', 'Собираем игру из ROM…');
@@ -569,6 +624,7 @@ async function startRom(romBytes, name, { saved = false } = {}) {
       }
     }
     const gameBytes = state.gameBytes;
+    if (!saved && gameBytes && gameBytes.length > 1024) idbPut(`core-${state.romSha}`, gameBytes);
 
     const host = await bootHost(romBytes, gameBytes);
     setStatus('boot', 'Запускаем оригинальную игру…');
