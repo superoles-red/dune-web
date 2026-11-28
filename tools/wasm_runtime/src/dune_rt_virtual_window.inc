@@ -174,20 +174,39 @@ static void dune_expanded_black(uint8_t *dst, size_t pixels) {
 
 /* Nearest-neighbour copy of an RGB(A) source region into an RGBA destination
  * rect using doubles, the same scaling SDL_RenderCopyF applies. */
+/* Bilinear upscale of the world raster. Nearest sampling on a fractional
+   scale (e.g. 1.3375 CSS px per world pixel on a tall phone) duplicates rows
+   and columns unevenly, which looks like a wavy "accordion"; the old SDL path
+   let the browser filter it. Interpolate here instead. */
 static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, int sw, int sh,
                                 double scale) {
-    if (!(scale > 0.0)) return;
+    if (!(scale > 0.0) || sw < 1 || sh < 1) return;
     for (int y = 0; y < h; ++y) {
-        int sy = (int)((double)y / scale);
-        if (sy < 0 || sy >= sh) continue;
+        double fy = ((double)y + 0.5) / scale - 0.5;
+        if (fy < 0.0) fy = 0.0;
+        int y0 = (int)fy;
+        if (y0 >= sh) y0 = sh - 1;
+        int y1 = y0 + 1 < sh ? y0 + 1 : y0;
+        double ty = fy - y0;
+        if (ty < 0.0) ty = 0.0;
         for (int x = 0; x < w; ++x) {
-            int sx = (int)((double)x / scale);
-            if (sx < 0 || sx >= sw) continue;
-            size_t s = ((size_t)sy * (size_t)sw + (size_t)sx) * 4u;
+            double fx = ((double)x + 0.5) / scale - 0.5;
+            if (fx < 0.0) fx = 0.0;
+            int x0 = (int)fx;
+            if (x0 >= sw) x0 = sw - 1;
+            int x1 = x0 + 1 < sw ? x0 + 1 : x0;
+            double tx = fx - x0;
+            if (tx < 0.0) tx = 0.0;
+            size_t s00 = ((size_t)y0 * (size_t)sw + (size_t)x0) * 4u;
+            size_t s10 = ((size_t)y0 * (size_t)sw + (size_t)x1) * 4u;
+            size_t s01 = ((size_t)y1 * (size_t)sw + (size_t)x0) * 4u;
+            size_t s11 = ((size_t)y1 * (size_t)sw + (size_t)x1) * 4u;
             size_t d = ((size_t)y * (size_t)w + (size_t)x) * 4u;
-            dst[d] = src[s];
-            dst[d + 1u] = src[s + 1u];
-            dst[d + 2u] = src[s + 2u];
+            for (int c = 0; c < 3; ++c) {
+                double top = src[s00 + c] + (src[s10 + c] - src[s00 + c]) * tx;
+                double bottom = src[s01 + c] + (src[s11 + c] - src[s01 + c]) * tx;
+                dst[d + (size_t)c] = (uint8_t)(top + (bottom - top) * ty + 0.5);
+            }
         }
     }
 }
