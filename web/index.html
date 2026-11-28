@@ -204,6 +204,14 @@
     return box;
   }
   window.__DUNE_SHOW_ERROR__ = panel;
+  // Manual diagnostics: open https://.../dune-web/?diag=1 to see live state.
+  if (new URLSearchParams(location.search).has('diag')) {
+    var live = panel();
+    setInterval(function () {
+      live.textContent = 'Диагностика (обновляется):\n' + report();
+      if (live.contains(live.querySelector('div'))) live.append(live.querySelector('div'));
+    }, 1000);
+  }
   function record(message, detail) {
     errors.push({ message: String(message).slice(0, 500), detail: detail ? String(detail).slice(0, 800) : null, at: Date.now() });
     panel();
