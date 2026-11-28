@@ -767,7 +767,7 @@ async function startRom(romBytes, name, { saved = false } = {}) {
     const dprForFrame = Math.min(globalThis.devicePixelRatio || 1, 3);
     const hidpiRequested = new URLSearchParams(location.search).has('hidpi');
     const hidpiFits = innerWidth * dprForFrame <= 4096 && innerHeight * dprForFrame <= 4096;
-    if ((hidpiRequested || dprForFrame >= 2) && hidpiFits) {
+    if (hidpiRequested && hidpiFits) {
       try {
         host.exports.dune_web_set_expanded_output_divisor?.(1 / dprForFrame);
         window.__BYOP_HIDPI__ = 1 / dprForFrame;
