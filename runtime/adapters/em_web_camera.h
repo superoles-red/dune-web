@@ -112,6 +112,11 @@ static void em_web_camera_sync(void) {
         em_camera_zoom=v->zoom?v->zoom:100;em_camera_valid=1;
     }
 }
+/* Presentation-only sub-pixel remainder between the published double camera and
+   the integer camera used to rasterise the expanded world. */
+static double em_web_camera_sub_x(void){return em_camera_valid?em_camera_x-(double)em_host.dune_view.camera_x:0.0;}
+static double em_web_camera_sub_y(void){return em_camera_valid?em_camera_y-(double)em_host.dune_view.camera_y:0.0;}
+
 static void em_web_camera_publish(double x,double y,const DuneLayout *layout) {
     double minx,maxx,miny,maxy;
     em_camera_bounds(dune_word(&em_cpu,0xe400),dune_word(&em_cpu,0xe402),320,layout->world_width,&minx,&maxx);

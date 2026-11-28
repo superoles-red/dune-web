@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "game": "Dune \u2014 The Battle for Arrakis (USA)",
+  "game": "Dune — The Battle for Arrakis (USA)",
   "runtime_version": 2,
   "runtime_file": "dune-runtime-v2.c",
   "runtime_sha256": "e47a4cae5d5235851a2d1b12269ab38ef23c969aa37b5314250fe1d6c8436b30",
@@ -26,7 +26,7 @@
     "house_offset": 49874,
     "house_encoding": "big-endian u16 at DuneSaveState.ram + $C274",
     "mission_offset": 49326,
-    "mission_encoding": "big-endian u16 at DuneSaveState.ram + $C050; stored value is mission-1 (read as word+1, 1-based mission)",
+    "mission_encoding": "big-endian u16 at DuneSaveState.ram + $C050, value is mission+1",
     "ym_size_field_offset": 8,
     "total_size_field_offset": 12,
     "max_buffer_bytes": 262144
@@ -43,7 +43,7 @@
     "dir": "adapters",
     "manifest": "adapters/manifest.json",
     "count": 20,
-    "bytes": 224074,
+    "bytes": 224451,
     "files": [
       {
         "name": "em_web_audio_levels.h",
@@ -62,8 +62,8 @@
       },
       {
         "name": "em_web_camera.h",
-        "bytes": 14629,
-        "sha256": "e9a7a85d59cc8037c8943b55db9ed4d3c5c64d0cdea12e354d6bef80a74bc059"
+        "bytes": 15006,
+        "sha256": "137d6f2a272c99e0a35e7faf294a041337096eaafd972bcc057753f10e6cedf0"
       },
       {
         "name": "em_web_campaign.h",

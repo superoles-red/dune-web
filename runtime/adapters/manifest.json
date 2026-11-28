@@ -3,7 +3,7 @@
   "license": "MIT",
   "description": "Browser host/input adapters of this port. Code only: no ROM bytes, no translated game instructions. Included by the pinned runtime preamble.",
   "count": 20,
-  "bytes": 224074,
+  "bytes": 224451,
   "files": [
     {
       "name": "em_web_audio_levels.h",
@@ -22,8 +22,8 @@
     },
     {
       "name": "em_web_camera.h",
-      "bytes": 14629,
-      "sha256": "e9a7a85d59cc8037c8943b55db9ed4d3c5c64d0cdea12e354d6bef80a74bc059"
+      "bytes": 15006,
+      "sha256": "137d6f2a272c99e0a35e7faf294a041337096eaafd972bcc057753f10e6cedf0"
     },
     {
       "name": "em_web_campaign.h",

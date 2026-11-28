@@ -88,7 +88,7 @@ ADAPTER_SHA256 = {
     "em_web_audio_levels.h": "e38d64773f0ddd88d10a14976633ce0d563d11448fd7da1fcb2175bff4b4ad92",
     "em_web_audio_levels_cpp.h": "6d84efa466eaa4dfc485596c245050beb8f194b1bd516c5e280e1e4933bdd472",
     "em_web_building_ui.h": "75a225de14d65df73a1ffd6a91f336573e249a4dba86b4f0a871003f370a9819",
-    "em_web_camera.h": "e9a7a85d59cc8037c8943b55db9ed4d3c5c64d0cdea12e354d6bef80a74bc059",
+    "em_web_camera.h": "137d6f2a272c99e0a35e7faf294a041337096eaafd972bcc057753f10e6cedf0",
     "em_web_campaign.h": "d67ad7a0fa7e95e2e0fc967f42482b478a8eb99a48c9ab6726cb6a408ad7cd3c",
     "em_web_frame.h": "78f8e0eb045edce055cdf485ac897110cf5dda88ab90e0430185f1308356ca13",
     "em_web_host.h": "4ac07518b0ac14d8eed343c2eae2e9d29dad8de4b1d7e26579edcc6e1ffca23e",

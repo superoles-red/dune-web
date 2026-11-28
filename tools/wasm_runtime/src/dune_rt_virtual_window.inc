@@ -186,13 +186,13 @@ static void dune_expanded_black(uint8_t *dst, size_t pixels) {
    and columns unevenly, which looks like a wavy "accordion"; the old SDL path
    let the browser filter it. Interpolate here instead. */
 static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, int sw, int sh,
-                                double scale) {
+                                double scale, double offset_x, double offset_y) {
     if (!(scale > 0.0) || sw < 1 || sh < 1) return;
     /* Integer scales (the native-resolution phone path uses 1:1) are copied
        exactly; interpolating at 1:1 would blend every pixel with its neighbour
        and look greasy. */
     double rounded = (double)((int)(scale + 0.5));
-    if (scale >= 1.0 && fabs(scale - rounded) < 1e-9) {
+    if (offset_x == 0.0 && offset_y == 0.0 && scale >= 1.0 && fabs(scale - rounded) < 1e-9) {
         int step = (int)rounded;
         for (int y = 0; y < h; ++y) {
             int sy = y / step;
@@ -210,7 +210,7 @@ static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, 
         return;
     }
     for (int y = 0; y < h; ++y) {
-        double fy = ((double)y + 0.5) / scale - 0.5;
+        double fy = ((double)y + 0.5) / scale - 0.5 + offset_y;
         if (fy < 0.0) fy = 0.0;
         int y0 = (int)fy;
         if (y0 >= sh) y0 = sh - 1;
@@ -224,7 +224,7 @@ static void dune_expanded_world(uint8_t *dst, int w, int h, const uint8_t *src, 
         if (ty < 0.0) ty = 0.0;
         if (ty > 1.0) ty = 1.0;
         for (int x = 0; x < w; ++x) {
-            double fx = ((double)x + 0.5) / scale - 0.5;
+            double fx = ((double)x + 0.5) / scale - 0.5 + offset_x;
             if (fx < 0.0) fx = 0.0;
             int x0 = (int)fx;
             if (x0 >= sw) x0 = sw - 1;
@@ -345,8 +345,11 @@ EMSCRIPTEN_KEEPALIVE const uint8_t *dune_web_expanded_frame_rgba(void) {
         dune_expanded_frame_capacity = bytes;
     }
     dune_expanded_black(dune_expanded_frame, (size_t)w * (size_t)h);
+    /* Sub-pixel camera remainder: the world raster is built at the rounded
+       camera position, so shift sampling by the fraction for smooth panning. */
     dune_expanded_world(dune_expanded_frame, w, h, view->pixels,
-                        (int)view->width, (int)view->height, world_scale);
+                        (int)view->width, (int)view->height, world_scale,
+                        em_web_camera_sub_x(), em_web_camera_sub_y());
     /* Same placement as dune_view_draw(): HUD top 144px and bottom 80px. */
     double hud_w = 320.0 * hud_scale;
     double hud_x = (double)w - hud_w;
